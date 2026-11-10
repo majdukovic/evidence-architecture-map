@@ -42,6 +42,8 @@ earlier analysis, and that is deliberate: do not guess what someone else conclud
   directly), `partial` (some of it shown, say what is missing) or `not found` (say what you searched).
 - If the code contradicts the premise of a question, say so. "Not found" is a good answer when it is true.
 - Never quote credentials or personal data.
+- Run only commands of the form `git -C <repo> ...` or `node <script> ...` with absolute paths, one per call: other
+  shell commands may be refused in unattended runs.
 
 Return a table: `Q-id | answer | evidence | confidence`.
 

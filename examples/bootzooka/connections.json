@@ -3,7 +3,7 @@
     "from": "ui",
     "to": "http-api",
     "protocol": "HTTP",
-    "what": "JSON calls to /api/v1; the base URL is a build-time variable (VITE_APP_BASE_URL), and the packaged build that the backend serves is built with the docker mode",
+    "what": "JSON calls to /api/v1; the base URL is a build-time variable (VITE_APP_BASE_URL), and the packaged build that the backend serves is built with the docker mode. In local development the UI dev server runs on port 8081 and the example env file points the base URL at the backend on port 8080, so the browser makes cross-origin calls; the backend installs Tapir's CORS interceptor",
     "evidence": [
       {
         "ref": "bootzooka:ui/src/api/apiFetcher.ts:80",
@@ -16,6 +16,18 @@
       {
         "ref": "bootzooka:build.sbt:129",
         "quote": "yarn \" + taskName + \" --mode docker"
+      },
+      {
+        "ref": "bootzooka:ui/.env.example:1",
+        "quote": "http://localhost:8080/api/v1"
+      },
+      {
+        "ref": "bootzooka:ui/vite.config.ts:16",
+        "quote": "port: 8081"
+      },
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala:47",
+        "quote": ".corsInterceptor(CORSInterceptor.default[Identity])"
       }
     ]
   },
@@ -262,6 +274,209 @@
       {
         "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Main.scala:27",
         "quote": "deps.httpApi.start().discard"
+      }
+    ]
+  },
+  {
+    "from": "main",
+    "to": "otel",
+    "protocol": "in-process",
+    "what": "Creates the OpenTelemetry SDK (from OTEL_* settings) before the database and the services",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:40",
+        "quote": "val otel = initializeOtel()"
+      }
+    ]
+  },
+  {
+    "from": "http-api",
+    "to": "otel",
+    "protocol": "in-process",
+    "what": "Tapir tracing and metrics interceptors on every request, plus an interceptor that puts the trace id into the log context",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala:43",
+        "quote": ".prependInterceptor(OpenTelemetryTracing(otel))"
+      },
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala:48",
+        "quote": "OpenTelemetryMetrics.default[Identity](otel)"
+      },
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala:44",
+        "quote": ".prependInterceptor(SetTraceIdInMDCInterceptor)"
+      }
+    ]
+  },
+  {
+    "from": "user",
+    "to": "otel",
+    "protocol": "in-process",
+    "what": "Increments the registered-users counter on every registration request, including ones whose registration then fails (the add happens before the result is checked)",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:25",
+        "quote": "metrics.registeredUsersCounter.add(1)"
+      }
+    ]
+  },
+  {
+    "from": "email-service",
+    "to": "otel",
+    "protocol": "in-process",
+    "what": "Sets the e-mail queue-size gauge from the periodic count loop",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala:45",
+        "quote": "metrics.emailQueueGauge.set(count.toDouble)"
+      }
+    ]
+  },
+  {
+    "from": "email-sender",
+    "to": "otel",
+    "protocol": "in-process",
+    "what": "The HTTP client given to the sender is wrapped with OpenTelemetry tracing and metrics, so the Mailgun call is traced",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:42",
+        "quote": "OpenTelemetryMetricsBackend(OpenTelemetryTracingBackend(HttpClientSyncBackend(), otel), otel)"
+      },
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/EmailSender.scala:11",
+        "quote": "new MailgunEmailSender(config.mailgun, sttpBackend)"
+      }
+    ]
+  },
+  {
+    "from": "otel",
+    "to": "otel-lgtm",
+    "protocol": "OTLP/HTTP",
+    "what": "Telemetry from the auto-configured SDK goes to the OTLP endpoint of the observability container; docker-compose sets that endpoint and the http/protobuf protocol through environment variables",
+    "condition": "Only when an OTLP endpoint is configured, as docker-compose does",
+    "evidence": [
+      {
+        "ref": "bootzooka:docker-compose.yml:15",
+        "quote": "OTEL_EXPORTER_OTLP_ENDPOINT: 'http://observability:4318'"
+      },
+      {
+        "ref": "bootzooka:docker-compose.yml:16",
+        "quote": "OTEL_EXPORTER_OTLP_PROTOCOL: 'http/protobuf'"
+      },
+      {
+        "ref": "bootzooka:docker-compose.yml:32",
+        "quote": "image: 'grafana/otel-lgtm'"
+      },
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:68",
+        "quote": "AutoConfiguredOpenTelemetrySdk"
+      }
+    ]
+  },
+  {
+    "from": "compose",
+    "to": "http-api",
+    "protocol": "container",
+    "what": "Runs the backend image and publishes its port 8080",
+    "evidence": [
+      {
+        "ref": "bootzooka:docker-compose.yml:3",
+        "quote": "image: 'softwaremill/bootzooka:latest'"
+      },
+      {
+        "ref": "bootzooka:docker-compose.yml:5",
+        "quote": "- '8080:8080'"
+      }
+    ]
+  },
+  {
+    "from": "compose",
+    "to": "postgres",
+    "protocol": "container",
+    "what": "Runs PostgreSQL 17.5 and publishes its port 5432 on host port 25432",
+    "evidence": [
+      {
+        "ref": "bootzooka:docker-compose.yml:22",
+        "quote": "image: 'postgres:17.5'"
+      },
+      {
+        "ref": "bootzooka:docker-compose.yml:24",
+        "quote": "- '25432:5432'"
+      }
+    ]
+  },
+  {
+    "from": "compose",
+    "to": "otel-lgtm",
+    "protocol": "container",
+    "what": "Runs the observability container and publishes Grafana on host port 3000",
+    "evidence": [
+      {
+        "ref": "bootzooka:docker-compose.yml:32",
+        "quote": "image: 'grafana/otel-lgtm'"
+      },
+      {
+        "ref": "bootzooka:docker-compose.yml:34",
+        "quote": "- '3000:3000'"
+      }
+    ]
+  },
+  {
+    "from": "helm-chart",
+    "to": "http-api",
+    "protocol": "Kubernetes",
+    "what": "Deploys the backend image with its settings passed as environment variables from a ConfigMap and a Secret",
+    "evidence": [
+      {
+        "ref": "bootzooka:helm/bootzooka/templates/deployment.yaml:24",
+        "quote": "image: \"{{ .Values.bootzooka.image.repository }}"
+      },
+      {
+        "ref": "bootzooka:helm/bootzooka/templates/deployment.yaml:27",
+        "quote": "- configMapRef:"
+      },
+      {
+        "ref": "bootzooka:helm/bootzooka/templates/deployment.yaml:33",
+        "quote": "containerPort: 8080"
+      }
+    ]
+  },
+  {
+    "from": "helm-chart",
+    "to": "postgres",
+    "protocol": "Kubernetes",
+    "what": "Optionally installs a Bitnami PostgreSQL sub-chart and points the backend's SQL_HOST at it",
+    "condition": "Only when postgresql.enabled is true (the default)",
+    "evidence": [
+      {
+        "ref": "bootzooka:helm/bootzooka/Chart.yaml:23",
+        "quote": "- name: postgresql"
+      },
+      {
+        "ref": "bootzooka:helm/bootzooka/Chart.yaml:26",
+        "quote": "condition: postgresql.enabled"
+      },
+      {
+        "ref": "bootzooka:helm/bootzooka/templates/configmap.yaml:17",
+        "quote": "SQL_HOST: \"{{ tpl .Values.bootzooka.sql.host . }}\""
+      }
+    ]
+  },
+  {
+    "from": "helm-chart",
+    "to": "otel",
+    "protocol": "Kubernetes",
+    "what": "Passes the OTEL_* settings to the backend; OpenTelemetry is disabled unless <code>bootzooka.otel.enabled</code> is set",
+    "condition": "Export only when bootzooka.otel.enabled is true",
+    "evidence": [
+      {
+        "ref": "bootzooka:helm/bootzooka/templates/configmap.yaml:19",
+        "quote": "OTEL_SDK_DISABLED: \"{{ not .Values.bootzooka.otel.enabled }}\""
+      },
+      {
+        "ref": "bootzooka:helm/bootzooka/values.yaml:49",
+        "quote": "enabled: false"
       }
     ]
   }

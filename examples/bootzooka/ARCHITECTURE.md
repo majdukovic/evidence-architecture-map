@@ -23,6 +23,7 @@ flowchart LR
     n_db["DB access and migrations"]
     n_config["Configuration"]
     n_main["Startup (Main)"]
+    n_otel["OpenTelemetry"]
   end
   subgraph n_layer_data["Data stores and messaging"]
     n_postgres["PostgreSQL"]
@@ -30,6 +31,11 @@ flowchart LR
   subgraph n_layer_external["Third-party systems"]
     n_mailgun["Mailgun"]
     n_smtp_server["SMTP server"]
+    n_otel_lgtm["grafana/otel-lgtm"]
+  end
+  subgraph n_layer_deploy["Local and cluster deployment"]
+    n_compose["docker-compose stack"]
+    n_helm_chart["Helm chart"]
   end
   n_ui -->|"HTTP"| n_http_api
   n_http_api -->|"in-process"| n_user
@@ -50,6 +56,18 @@ flowchart LR
   n_main -->|"in-process"| n_db
   n_main -->|"in-process"| n_email_service
   n_main -->|"in-process"| n_http_api
+  n_main -->|"in-process"| n_otel
+  n_http_api -->|"in-process"| n_otel
+  n_user -->|"in-process"| n_otel
+  n_email_service -->|"in-process"| n_otel
+  n_email_sender -->|"in-process"| n_otel
+  n_otel -.->|"OTLP/HTTP"| n_otel_lgtm
+  n_compose -->|"container"| n_http_api
+  n_compose -->|"container"| n_postgres
+  n_compose -->|"container"| n_otel_lgtm
+  n_helm_chart -->|"Kubernetes"| n_http_api
+  n_helm_chart -.->|"Kubernetes"| n_postgres
+  n_helm_chart -.->|"Kubernetes"| n_otel
 ```
 
 ## Components
@@ -78,8 +96,8 @@ Netty server that exposes the Tapir endpoints under `/api/v1`, Swagger UI under 
 
 - **Repo:** [bootzooka](https://github.com/softwaremill/bootzooka/tree/8d93dde94418ac4771be095ef74376561f7de444)
 - **Exposes:** `/api/v1/*`, `/api/v1/docs`, `/ (static webapp)`, `GET /api/v1/admin/version`
-- **Calls / sends to:** User module (in-process), Password reset module (in-process)
-- **Called by / receives from:** Web UI (React) (HTTP), Startup (Main) (in-process)
+- **Calls / sends to:** User module (in-process), Password reset module (in-process), OpenTelemetry (in-process)
+- **Called by / receives from:** Web UI (React) (HTTP), Startup (Main) (in-process), docker-compose stack (container), Helm chart (Kubernetes)
 - **Evidence:**
   - [bootzooka › HttpApi.scala:77](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala#L77) `NettySyncServer(serverOptions`
   - [bootzooka › HttpApi.scala:40](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala#L40) `List("api", "v1")`
@@ -95,7 +113,7 @@ Endpoints and logic for registering, logging in, logging out, reading and changi
 - **Repo:** [bootzooka](https://github.com/softwaremill/bootzooka/tree/8d93dde94418ac4771be095ef74376561f7de444)
 - **Exposes:** `POST /user/register`, `POST /user/login`, `POST /user/logout`, `GET /user`, `POST /user`, `POST /user/changepassword`
 - **Stores data in:** PostgreSQL: users
-- **Calls / sends to:** Security (API keys) (in-process), E-mail outbox (in-process), DB access and migrations (in-process)
+- **Calls / sends to:** Security (API keys) (in-process), E-mail outbox (in-process), DB access and migrations (in-process), OpenTelemetry (in-process)
 - **Called by / receives from:** HTTP server (in-process)
 - **Evidence:**
   - [bootzooka › UserApi.scala:63](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala#L63) `val registerUserEndpoint = baseEndpoint.post`
@@ -106,6 +124,8 @@ Endpoints and logic for registering, logging in, logging out, reading and changi
 
 Authenticates a request by looking its token up in the database and checking its expiry. The same `Auth` class serves API keys (multi-use, kept) and password reset codes (one-time, deleted when used).
 
+> **Logout** deletes the API key sent in the request *body* (`Logout_IN.apiKey`), not necessarily the key that authenticated the call. **Change password** validates the new password and deletes all of the user's API keys, then issues a new one; **password reset** does neither (see the API key flow).
+
 - **Repo:** [bootzooka](https://github.com/softwaremill/bootzooka/tree/8d93dde94418ac4771be095ef74376561f7de444)
 - **Stores data in:** PostgreSQL: api_keys
 - **Calls / sends to:** DB access and migrations (in-process)
@@ -113,10 +133,15 @@ Authenticates a request by looking its token up in the database and checking its
 - **Evidence:**
   - [bootzooka › Auth.scala:24](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/security/Auth.scala#L24) `def apply(id: Id[T]): Either[Fail.Unauthorized, Id[User]]`
   - [bootzooka › ApiKeyModel.scala:31](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/security/ApiKeyModel.scala#L31) `override def deleteWhenValid: Boolean = false`
+  - [bootzooka › UserApi.scala:38](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala#L38) `userService.logout(data.apiKey.asId[ApiKey])`
+  - [bootzooka › UserService.scala:130](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala#L130) `apiKeyService.invalidateAllForUser(user.id)`
+  - [bootzooka › UserService.scala:135](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala#L135) `validateNewPassword().ok()`
 
 #### Password reset module
 
 Creates a one-time reset code for a user and schedules an e-mail carrying a link with it; a second endpoint exchanges a valid code and a new password for a password change.
+
+> Resetting a password only writes the new hash: the new password is not validated (unlike registration and change-password) and the user's existing API keys stay valid (change-password deletes them all).
 
 - **Repo:** [bootzooka](https://github.com/softwaremill/bootzooka/tree/8d93dde94418ac4771be095ef74376561f7de444)
 - **Exposes:** `POST /passwordreset/forgot`, `POST /passwordreset/reset`
@@ -126,29 +151,39 @@ Creates a one-time reset code for a user and schedules an e-mail carrying a link
 - **Evidence:**
   - [bootzooka › PasswordResetApi.scala:34](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetApi.scala#L34) `val forgotPasswordEndpoint = baseEndpoint.post`
   - [bootzooka › PasswordResetApi.scala:29](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetApi.scala#L29) `val passwordResetEndpoint = baseEndpoint.post`
+  - [bootzooka › PasswordResetService.scala:52](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetService.scala#L52) `db.transact(userModel.updatePassword(userId, User.hashPassword(newPassword)))`
 
 #### E-mail outbox
 
 Other modules only insert an e-mail row; a background loop started at startup sends rows in batches and then deletes them. A second loop reports the queue size as a metric.
 
+> A batch is sent in full and only then deleted. If the sender throws part-way, nothing in the batch is deleted, the loop logs the error, and the rows stay in the outbox and are read again in a later round, so e-mails already sent earlier in that batch are sent again.
+
 - **Repo:** [bootzooka](https://github.com/softwaremill/bootzooka/tree/8d93dde94418ac4771be095ef74376561f7de444)
 - **Stores data in:** PostgreSQL: scheduled_emails
-- **Calls / sends to:** E-mail sender (in-process), DB access and migrations (in-process)
+- **Calls / sends to:** E-mail sender (in-process), DB access and migrations (in-process), OpenTelemetry (in-process)
 - **Called by / receives from:** User module (in-process), Password reset module (in-process), Startup (Main) (in-process)
 - **Evidence:**
   - [bootzooka › EmailService.scala:27](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala#L27) `emailModel.insert(Email(id, data))`
   - [bootzooka › EmailService.scala:39](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala#L39) `foreverPeriodically("Exception when sending emails")`
+  - [bootzooka › EmailService.scala:33](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala#L33) `db.transact(emailModel.delete(emails.map(_.id)))`
+  - [bootzooka › EmailService.scala:54](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala#L54) `catch case NonFatal(e) => logger.error(errorMsg, e)`
 
 #### E-mail sender
 
 Strategy chosen at startup from configuration: Mailgun if enabled, otherwise SMTP if enabled, otherwise a dummy sender that only logs and keeps the message in memory.
 
+> E-mail templates are plain-text `.txt` files, but the Mailgun sender posts the message text in Mailgun's `html` field; the SMTP sender sets it as a `plain` text part.
+
 - **Repo:** [bootzooka](https://github.com/softwaremill/bootzooka/tree/8d93dde94418ac4771be095ef74376561f7de444)
-- **Calls / sends to:** Mailgun (HTTPS), SMTP server (SMTP)
+- **Calls / sends to:** Mailgun (HTTPS), SMTP server (SMTP), OpenTelemetry (in-process)
 - **Called by / receives from:** E-mail outbox (in-process)
 - **Evidence:**
   - [bootzooka › EmailSender.scala:10](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/sender/EmailSender.scala#L10) `def create(sttpBackend: SyncBackend, config: EmailConfig)`
   - [bootzooka › DummyEmailSender.scala:16](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/sender/DummyEmailSender.scala#L16) `Would send email, if this wasn't a dummy email service implementation`
+  - [bootzooka › MailgunEmailSender.scala:22](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/sender/MailgunEmailSender.scala#L22) `"html" -> email.content`
+  - [bootzooka › EmailTemplateRenderer.scala:12](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/EmailTemplateRenderer.scala#L12) `/templates/email/$templateNameWithoutExtension.txt`
+  - [bootzooka › SmtpEmailSender.scala:64](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/sender/SmtpEmailSender.scala#L64) `m.setText(emailDescription.message, encoding, "plain")`
 
 #### DB access and migrations
 
@@ -176,10 +211,33 @@ A typed `Config` read with pureconfig from `application.conf`; most keys can be 
 Entry point of the backend. Builds the object graph with MacWire, starts the e-mail loops and the HTTP server, then blocks forever.
 
 - **Repo:** [bootzooka](https://github.com/softwaremill/bootzooka/tree/8d93dde94418ac4771be095ef74376561f7de444)
-- **Calls / sends to:** Configuration (in-process), DB access and migrations (in-process), E-mail outbox (in-process), HTTP server (in-process)
+- **Calls / sends to:** Configuration (in-process), DB access and migrations (in-process), E-mail outbox (in-process), HTTP server (in-process), OpenTelemetry (in-process)
 - **Evidence:**
   - [bootzooka › Main.scala:24](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/Main.scala#L24) `val deps = Dependencies.create`
   - [bootzooka › Dependencies.scala:51](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala#L51) `autowire[Dependencies](`
+
+#### OpenTelemetry
+
+At startup the backend creates an OpenTelemetry SDK configured from `OTEL_*` environment variables, adds JVM runtime metrics and installs the Logback appender that sends logs through it. The HTTP server gets Tapir tracing and metrics interceptors, the outgoing HTTP client is wrapped with tracing and metrics, and a `Metrics` class defines two custom instruments: a counter bumped on each registration request and an e-mail queue gauge.
+
+> The SDK is created in `Dependencies.create`; where the data goes is decided by `OTEL_*` environment variables or `otel.*` system properties (docker-compose sets an OTLP endpoint, `backend-start.sh` sets `OTEL_SDK_DISABLED=true`).
+
+- **Repo:** [bootzooka](https://github.com/softwaremill/bootzooka/tree/8d93dde94418ac4771be095ef74376561f7de444)
+- **Exposes:** `Metric: bootzooka_registered_users_counter`, `Metric: bootzooka_email_queue_gauge`
+- **Calls / sends to:** grafana/otel-lgtm (OTLP/HTTP)
+- **Called by / receives from:** Startup (Main) (in-process), HTTP server (in-process), User module (in-process), E-mail outbox (in-process), E-mail sender (in-process), Helm chart (Kubernetes)
+- **Evidence:**
+  - [bootzooka › Dependencies.scala:68](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala#L68) `AutoConfiguredOpenTelemetrySdk`
+  - [bootzooka › Dependencies.scala:71](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala#L71) `RuntimeMetrics.create(otel).discard`
+  - [bootzooka › Dependencies.scala:72](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala#L72) `OpenTelemetryAppender.install`
+  - [bootzooka › HttpApi.scala:43](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala#L43) `.prependInterceptor(OpenTelemetryTracing(otel))`
+  - [bootzooka › HttpApi.scala:48](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala#L48) `OpenTelemetryMetrics.default[Identity](otel)`
+  - [bootzooka › Dependencies.scala:42](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala#L42) `OpenTelemetryTracingBackend(HttpClientSyncBackend(), otel)`
+  - [bootzooka › Metrics.scala:11](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/metrics/Metrics.scala#L11) `.counterBuilder("bootzooka_registered_users_counter")`
+  - [bootzooka › Metrics.scala:17](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/metrics/Metrics.scala#L17) `.gaugeBuilder("bootzooka_email_queue_gauge")`
+  - [bootzooka › SetTraceIdInMDCInterceptor.scala:20](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/infrastructure/SetTraceIdInMDCInterceptor.scala#L20) `Span.current().getSpanContext().getTraceId()`
+  - [bootzooka › backend-start.sh:4](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend-start.sh#L4) `export OTEL_SDK_DISABLED=true`
+  - [bootzooka › Dependencies.scala:80](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala#L80) `sys.props.toSeq.filter((k, _) => k.startsWith("otel."))`
 
 ### Data stores and messaging
 
@@ -189,7 +247,7 @@ Holds users, API keys, password reset codes and the scheduled e-mail outbox. The
 
 - **Repo:** [bootzooka](https://github.com/softwaremill/bootzooka/tree/8d93dde94418ac4771be095ef74376561f7de444)
 - **Stores data in:** users, api_keys, password_reset_codes, scheduled_emails
-- **Called by / receives from:** DB access and migrations (JDBC)
+- **Called by / receives from:** DB access and migrations (JDBC), docker-compose stack (container), Helm chart (Kubernetes)
 - **Evidence:**
   - [bootzooka › application.conf:24](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/resources/application.conf#L24) `jdbc:postgresql://`
   - [bootzooka › V1__create_schema.sql:43](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/resources/db/migration/V1__create_schema.sql#L43) `CREATE TABLE "scheduled_emails"`
@@ -218,11 +276,55 @@ A mail server reached with the JavaMail transport, used only when the SMTP sende
 - **Evidence:**
   - [bootzooka › SmtpEmailSender.scala:99](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/sender/SmtpEmailSender.scala#L99) `transport.sendMessage(m, m.getAllRecipients)`
 
+#### grafana/otel-lgtm
+
+A `grafana/otel-lgtm` container in docker-compose; its comment names an OpenTelemetry Collector, Prometheus, Loki, Tempo and Grafana. Grafana's UI is published on host port 3000.
+
+*Optional: Only in the docker-compose stack (or wherever an OTLP endpoint is configured)*
+
+- **Repo:** [bootzooka](https://github.com/softwaremill/bootzooka/tree/8d93dde94418ac4771be095ef74376561f7de444)
+- **Exposes:** `Grafana UI :3000 (published to the host)`
+- **Called by / receives from:** OpenTelemetry (OTLP/HTTP), docker-compose stack (container)
+- **Evidence:**
+  - [bootzooka › docker-compose.yml:32](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L32) `image: 'grafana/otel-lgtm'`
+  - [bootzooka › docker-compose.yml:34](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L34) `- '3000:3000'`
+  - [bootzooka › docker-compose.yml:30](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L30) `OpenTelemetry Collector, Prometheus, Loki, Tempo, Grafana`
+  - [bootzooka › docker-compose.yml:15](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L15) `OTEL_EXPORTER_OTLP_ENDPOINT: 'http://observability:4318'`
+
+### Local and cluster deployment
+
+#### docker-compose stack
+
+`docker-compose.yml` starts the published backend image on port 8080, a PostgreSQL 17.5 container whose port 5432 is published on host port **25432**, and the `grafana/otel-lgtm` observability container.
+
+- **Repo:** [bootzooka](https://github.com/softwaremill/bootzooka/tree/8d93dde94418ac4771be095ef74376561f7de444)
+- **Exposes:** `host :8080 (backend)`, `host :25432 (PostgreSQL)`, `host :3000 (Grafana)`
+- **Calls / sends to:** HTTP server (container), PostgreSQL (container), grafana/otel-lgtm (container)
+- **Evidence:**
+  - [bootzooka › docker-compose.yml:3](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L3) `image: 'softwaremill/bootzooka:latest'`
+  - [bootzooka › docker-compose.yml:22](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L22) `image: 'postgres:17.5'`
+  - [bootzooka › docker-compose.yml:24](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L24) `- '25432:5432'`
+
+#### Helm chart
+
+Chart `bootzooka` for Kubernetes: a Deployment of the backend image (container port 8080) configured through a ConfigMap and a Secret, a Service, an Ingress, and an optional Bitnami PostgreSQL sub-chart. Its own GitHub Actions workflow lints it, test-installs it on kind clusters and checks the generated chart docs.
+
+- **Repo:** [bootzooka](https://github.com/softwaremill/bootzooka/tree/8d93dde94418ac4771be095ef74376561f7de444)
+- **Exposes:** `Deployment (port 8080)`, `Service`, `Ingress`
+- **Calls / sends to:** HTTP server (Kubernetes), PostgreSQL (Kubernetes), OpenTelemetry (Kubernetes)
+- **Evidence:**
+  - [bootzooka › Chart.yaml:4](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/helm/bootzooka/Chart.yaml#L4) `name: bootzooka`
+  - [bootzooka › deployment.yaml:26](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/helm/bootzooka/templates/deployment.yaml#L26) `envFrom:`
+  - [bootzooka › deployment.yaml:33](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/helm/bootzooka/templates/deployment.yaml#L33) `containerPort: 8080`
+  - [bootzooka › Chart.yaml:26](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/helm/bootzooka/Chart.yaml#L26) `condition: postgresql.enabled`
+- **Tests and test helpers:**
+  - `Helm chart CI` [bootzooka › bootzooka-helm-ci.yaml:103](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/.github/workflows/bootzooka-helm-ci.yaml#L103) `ct install --config .github/helm-ct.yml`
+
 ## Connections
 
 | From | To | Protocol | What | Evidence |
 |---|---|---|---|---|
-| Web UI (React) | HTTP server | HTTP | JSON calls to /api/v1; the base URL is a build-time variable (VITE_APP_BASE_URL), and the packaged build that the backend serves is built with the docker mode | [bootzooka › apiFetcher.ts:80](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/ui/src/api/apiFetcher.ts#L80) `'${baseUrl}${resolveUrl(url, queryParams, pathParams)}'`<br>[bootzooka › vite.config.ts:11](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/ui/vite.config.ts#L11) `JSON.stringify(env.VITE_APP_BASE_URL)`<br>[bootzooka › build.sbt:129](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/build.sbt#L129) `yarn " + taskName + " --mode docker` |
+| Web UI (React) | HTTP server | HTTP | JSON calls to /api/v1; the base URL is a build-time variable (VITE_APP_BASE_URL), and the packaged build that the backend serves is built with the docker mode. In local development the UI dev server runs on port 8081 and the example env file points the base URL at the backend on port 8080, so the browser makes cross-origin calls; the backend installs Tapir's CORS interceptor | [bootzooka › apiFetcher.ts:80](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/ui/src/api/apiFetcher.ts#L80) `'${baseUrl}${resolveUrl(url, queryParams, pathParams)}'`<br>[bootzooka › vite.config.ts:11](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/ui/vite.config.ts#L11) `JSON.stringify(env.VITE_APP_BASE_URL)`<br>[bootzooka › build.sbt:129](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/build.sbt#L129) `yarn " + taskName + " --mode docker`<br>[bootzooka › .env.example:1](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/ui/.env.example#L1) `http://localhost:8080/api/v1`<br>[bootzooka › vite.config.ts:16](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/ui/vite.config.ts#L16) `port: 8081`<br>[bootzooka › HttpApi.scala:47](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala#L47) `.corsInterceptor(CORSInterceptor.default[Identity])` |
 | HTTP server | User module | in-process | Serves the user endpoints | [bootzooka › Dependencies.scala:36](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala#L36) `def endpoints = List(userApi, passwordResetApi, versionApi)`<br>[bootzooka › Dependencies.scala:60](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala#L60) `new HttpApi(apis.endpoints` |
 | HTTP server | Password reset module | in-process | Serves the password reset endpoints | [bootzooka › Dependencies.scala:36](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala#L36) `def endpoints = List(userApi, passwordResetApi, versionApi)` |
 | User module | Security (API keys) | in-process | Authenticates the bearer token of protected endpoints and issues API keys on login and registration | [bootzooka › UserApi.scala:35](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala#L35) `e.handleSecurity(authData => auth(authData))`<br>[bootzooka › UserService.scala:65](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala#L65) `apiKeyService.create(user.id,` |
@@ -241,6 +343,18 @@ A mail server reached with the JavaMail transport, used only when the SMTP sende
 | Startup (Main) | DB access and migrations | in-process | Creates the pool and runs migrations before anything else is served | [bootzooka › Dependencies.scala:44](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala#L44) `DB.createTestMigrate(config.db)` |
 | Startup (Main) | E-mail outbox | in-process | Starts the background send and queue-size loops | [bootzooka › Main.scala:26](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/Main.scala#L26) `deps.emailService.startProcesses()` |
 | Startup (Main) | HTTP server | in-process | Starts the HTTP server | [bootzooka › Main.scala:27](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/Main.scala#L27) `deps.httpApi.start().discard` |
+| Startup (Main) | OpenTelemetry | in-process | Creates the OpenTelemetry SDK (from OTEL_* settings) before the database and the services | [bootzooka › Dependencies.scala:40](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala#L40) `val otel = initializeOtel()` |
+| HTTP server | OpenTelemetry | in-process | Tapir tracing and metrics interceptors on every request, plus an interceptor that puts the trace id into the log context | [bootzooka › HttpApi.scala:43](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala#L43) `.prependInterceptor(OpenTelemetryTracing(otel))`<br>[bootzooka › HttpApi.scala:48](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala#L48) `OpenTelemetryMetrics.default[Identity](otel)`<br>[bootzooka › HttpApi.scala:44](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala#L44) `.prependInterceptor(SetTraceIdInMDCInterceptor)` |
+| User module | OpenTelemetry | in-process | Increments the registered-users counter on every registration request, including ones whose registration then fails (the add happens before the result is checked) | [bootzooka › UserApi.scala:25](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala#L25) `metrics.registeredUsersCounter.add(1)` |
+| E-mail outbox | OpenTelemetry | in-process | Sets the e-mail queue-size gauge from the periodic count loop | [bootzooka › EmailService.scala:45](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala#L45) `metrics.emailQueueGauge.set(count.toDouble)` |
+| E-mail sender | OpenTelemetry | in-process | The HTTP client given to the sender is wrapped with OpenTelemetry tracing and metrics, so the Mailgun call is traced | [bootzooka › Dependencies.scala:42](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala#L42) `OpenTelemetryMetricsBackend(OpenTelemetryTracingBackend(HttpClientSyncBackend(), otel), otel)`<br>[bootzooka › EmailSender.scala:11](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/sender/EmailSender.scala#L11) `new MailgunEmailSender(config.mailgun, sttpBackend)` |
+| OpenTelemetry | grafana/otel-lgtm | OTLP/HTTP | Telemetry from the auto-configured SDK goes to the OTLP endpoint of the observability container; docker-compose sets that endpoint and the http/protobuf protocol through environment variables (optional: Only when an OTLP endpoint is configured, as docker-compose does) | [bootzooka › docker-compose.yml:15](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L15) `OTEL_EXPORTER_OTLP_ENDPOINT: 'http://observability:4318'`<br>[bootzooka › docker-compose.yml:16](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L16) `OTEL_EXPORTER_OTLP_PROTOCOL: 'http/protobuf'`<br>[bootzooka › docker-compose.yml:32](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L32) `image: 'grafana/otel-lgtm'`<br>[bootzooka › Dependencies.scala:68](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala#L68) `AutoConfiguredOpenTelemetrySdk` |
+| docker-compose stack | HTTP server | container | Runs the backend image and publishes its port 8080 | [bootzooka › docker-compose.yml:3](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L3) `image: 'softwaremill/bootzooka:latest'`<br>[bootzooka › docker-compose.yml:5](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L5) `- '8080:8080'` |
+| docker-compose stack | PostgreSQL | container | Runs PostgreSQL 17.5 and publishes its port 5432 on host port 25432 | [bootzooka › docker-compose.yml:22](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L22) `image: 'postgres:17.5'`<br>[bootzooka › docker-compose.yml:24](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L24) `- '25432:5432'` |
+| docker-compose stack | grafana/otel-lgtm | container | Runs the observability container and publishes Grafana on host port 3000 | [bootzooka › docker-compose.yml:32](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L32) `image: 'grafana/otel-lgtm'`<br>[bootzooka › docker-compose.yml:34](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L34) `- '3000:3000'` |
+| Helm chart | HTTP server | Kubernetes | Deploys the backend image with its settings passed as environment variables from a ConfigMap and a Secret | [bootzooka › deployment.yaml:24](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/helm/bootzooka/templates/deployment.yaml#L24) `image: "{{ .Values.bootzooka.image.repository }}`<br>[bootzooka › deployment.yaml:27](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/helm/bootzooka/templates/deployment.yaml#L27) `- configMapRef:`<br>[bootzooka › deployment.yaml:33](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/helm/bootzooka/templates/deployment.yaml#L33) `containerPort: 8080` |
+| Helm chart | PostgreSQL | Kubernetes | Optionally installs a Bitnami PostgreSQL sub-chart and points the backend's SQL_HOST at it (optional: Only when postgresql.enabled is true (the default)) | [bootzooka › Chart.yaml:23](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/helm/bootzooka/Chart.yaml#L23) `- name: postgresql`<br>[bootzooka › Chart.yaml:26](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/helm/bootzooka/Chart.yaml#L26) `condition: postgresql.enabled`<br>[bootzooka › configmap.yaml:17](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/helm/bootzooka/templates/configmap.yaml#L17) `SQL_HOST: "{{ tpl .Values.bootzooka.sql.host . }}"` |
+| Helm chart | OpenTelemetry | Kubernetes | Passes the OTEL_* settings to the backend; OpenTelemetry is disabled unless `bootzooka.otel.enabled` is set (optional: Export only when bootzooka.otel.enabled is true) | [bootzooka › configmap.yaml:19](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/helm/bootzooka/templates/configmap.yaml#L19) `OTEL_SDK_DISABLED: "{{ not .Values.bootzooka.otel.enabled }}"`<br>[bootzooka › values.yaml:49](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/helm/bootzooka/values.yaml#L49) `enabled: false` |
 
 ## Flows
 
@@ -359,20 +473,24 @@ sequenceDiagram
 7. **Send each e-mail** (E-mail outbox → E-mail sender, in-process). Recipient, subject and content. The sender is Mailgun, SMTP or the dummy logger depending on configuration.
    - [bootzooka › EmailService.scala:32](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala#L32) `emails.map(_.data).foreach(emailSender.apply)`
    - [bootzooka › EmailSender.scala:10](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/sender/EmailSender.scala#L10) `def create(sttpBackend: SyncBackend, config: EmailConfig)`
-8. **POST the message to Mailgun (if enabled)** (E-mail sender → Mailgun, HTTPS). Sent as a form body. With SMTP enabled the message goes to the SMTP server; with neither, it is only logged.
+8. **POST the message to Mailgun (if enabled)** (E-mail sender → Mailgun, HTTPS). Sent as a form body. The message text is put in Mailgun's `html` field although the templates are plain-text `.txt` files (the SMTP sender sends it as a plain-text part). With SMTP enabled the message goes to the SMTP server; with neither, it is only logged.
    - Call: `POST <email.mailgun.url>`
    - [bootzooka › MailgunEmailSender.scala:15](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/sender/MailgunEmailSender.scala#L15) `.post(uri"${config.url}")`
    - [bootzooka › MailgunEmailSender.scala:20](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/sender/MailgunEmailSender.scala#L20) `"to" -> email.recipient`
    - [bootzooka › MailgunEmailSender.scala:22](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/sender/MailgunEmailSender.scala#L22) `"html" -> email.content`
    - [bootzooka › MailgunEmailSender.scala:19](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/sender/MailgunEmailSender.scala#L19) `config.senderDisplayName} <${config.senderName}@${config.domain}>`
-9. **Delete the sent rows** (E-mail outbox → DB access and migrations, in-process). 
+   - [bootzooka › EmailTemplateRenderer.scala:12](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/EmailTemplateRenderer.scala#L12) `/templates/email/$templateNameWithoutExtension.txt`
+   - [bootzooka › SmtpEmailSender.scala:64](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/sender/SmtpEmailSender.scala#L64) `m.setText(emailDescription.message, encoding, "plain")`
+9. **Delete the sent rows** (E-mail outbox → DB access and migrations, in-process). The delete runs once, after the whole batch has been handed to the sender. If the sender throws part-way, this step is not reached, the loop logs the error, and the rows stay in the outbox and are read again in a later round, so e-mails sent earlier in that batch are sent again.
    - [bootzooka › EmailService.scala:33](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala#L33) `db.transact(emailModel.delete(emails.map(_.id)))`
+   - [bootzooka › EmailService.scala:32](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala#L32) `emails.map(_.data).foreach(emailSender.apply)`
+   - [bootzooka › EmailService.scala:54](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala#L54) `catch case NonFatal(e) => logger.error(errorMsg, e)`
 10. **Receive the code and the new password** (HTTP server → Password reset module, in-process). The backend endpoint that completes a reset. This map cites no UI page that calls it; only the generated client has a hook for it.
    - Call: `POST /api/v1/passwordreset/reset`
    - [bootzooka › PasswordResetApi.scala:30](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetApi.scala#L30) `.in(PasswordResetPath / "reset")`
    - [bootzooka › PasswordResetApi.scala:14](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetApi.scala#L14) `passwordResetEndpoint.handle { data =>`
    - [bootzooka › apiComponents.ts:368](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/ui/src/api/apiComponents.ts#L368) `url: "/passwordreset/reset"`
-11. **Consume the code and store the new password hash** (Password reset module → DB access and migrations, in-process). The code is looked up, checked for expiry and deleted when valid (one-time); an unknown or expired code gives an unauthorized error. Then the new Argon2 hash is written.
+11. **Consume the code and store the new password hash** (Password reset module → DB access and migrations, in-process). The code is looked up, checked for expiry and deleted when valid (one-time); an unknown or expired code gives an unauthorized error. Then the new Argon2 hash is written. Nothing validates the new password and no API key is deleted, so keys issued before the reset keep working (change-password does both; see the API key flow).
    - [bootzooka › PasswordResetService.scala:50](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetService.scala#L50) `auth(code.asId[PasswordResetCode]).ok()`
    - [bootzooka › PasswordResetService.scala:52](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetService.scala#L52) `userModel.updatePassword(userId, User.hashPassword(newPassword))`
    - [bootzooka › PasswordResetCodeModel.scala:29](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetCodeModel.scala#L29) `override def deleteWhenValid: Boolean = true`
@@ -423,6 +541,52 @@ sequenceDiagram
    - [bootzooka › HttpApi.scala:77](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala#L77) `NettyConfig.default.host(config.host).port(config.port)`
    - [bootzooka › Main.scala:30](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/Main.scala#L30) `blocking until the application is shut down`
 
+### Log out and change password
+
+**Logout** deletes the API key named in the request body. **Change password** checks the current password, validates the new one, deletes *all* of the user's API keys and returns a fresh one. The reset-password flow does neither of the last two.
+
+```mermaid
+sequenceDiagram
+  participant n_ui as Web UI (React)
+  participant n_http_api as HTTP server
+  participant n_user as User module
+  participant n_security as Security (API keys)
+  participant n_db as DB access and migrations
+  n_ui->>n_http_api: Log out
+  n_user->>n_security: Authenticate the Bearer token
+  n_user->>n_db: Delete the key from the body
+  n_ui->>n_http_api: Change password
+  n_user->>n_db: Verify, validate, update, delete all keys, create a new key
+  n_http_api-->>n_ui: Return the new API key
+```
+
+1. **Log out** (Web UI (React) → HTTP server, HTTP). The navbar sends its stored key in the body; the Bearer header carries a key too. The endpoint's description says it invalidates the used API key, but the handler uses the body value.
+   - Call: `POST /api/v1/user/logout`
+   - [bootzooka › index.tsx:68](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/ui/src/components/AppNavbar/index.tsx#L68) `logout({ body: { apiKey } })`
+   - [bootzooka › apiComponents.ts:139](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/ui/src/api/apiComponents.ts#L139) `url: "/user/logout"`
+   - [bootzooka › UserApi.scala:79](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala#L79) `Logs out a user, invalidating the used API key.`
+2. **Authenticate the Bearer token** (User module → Security (API keys), in-process). Logout is a secured endpoint, so the header key is checked first; the handler then ignores the authenticated key id (`_ =>`).
+   - [bootzooka › UserApi.scala:37](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala#L37) `authedEndpoint(logoutEndpoint).handle { _ => data =>`
+3. **Delete the key from the body** (User module → DB access and migrations, in-process). The key id from the body is deleted. Nothing in these lines compares it with the key that authenticated the call.
+   - [bootzooka › UserApi.scala:38](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala#L38) `userService.logout(data.apiKey.asId[ApiKey])`
+   - [bootzooka › UserService.scala:67](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala#L67) `apiKeyService.invalidate(id)`
+   - [bootzooka › ApiKeyService.scala:25](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/security/ApiKeyService.scala#L25) `apiKeyModel.delete(id)`
+4. **Change password** (Web UI (React) → HTTP server, HTTP). Sent by the Profile page's password form.
+   - Call: `POST /api/v1/user/changepassword`
+   - [bootzooka › PasswordDetails.tsx:59](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/ui/src/pages/Profile/components/PasswordDetails.tsx#L59) `usePostUserChangepassword({`
+   - [bootzooka › apiComponents.ts:186](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/ui/src/api/apiComponents.ts#L186) `url: "/user/changepassword"`
+   - [bootzooka › UserApi.scala:41](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala#L41) `authedEndpoint(changePasswordEndpoint).handle { id => data =>`
+5. **Verify, validate, update, delete all keys, create a new key** (User module → DB access and migrations, in-process). The current password must verify and the new one must pass validation (non-empty). The new hash is stored, a notification e-mail is scheduled, all of the user's API keys are deleted and a new one is created and returned.
+   - [bootzooka › UserService.scala:118](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala#L118) `verifyPassword(user, currentPassword, validationErrorMsg = "Incorrect current password")`
+   - [bootzooka › UserService.scala:135](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala#L135) `validateNewPassword().ok()`
+   - [bootzooka › UserService.scala:130](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala#L130) `apiKeyService.invalidateAllForUser(user.id)`
+   - [bootzooka › UserService.scala:131](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala#L131) `apiKeyService.create(user.id, config.defaultApiKeyValid)`
+6. **Return the new API key** (HTTP server → Web UI (React), HTTP). 
+   - [bootzooka › UserApi.scala:43](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala#L43) `ChangePassword_OUT(apiKey.id.toString)`
+
+**Tested in:**
+- `UserApiTest` [bootzooka › UserApiTest.scala:197](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/test/scala/com/softwaremill/bootzooka/user/UserApiTest.scala#L197) `should "create new session and invalidate all existing user's sessions" in {`: Logs out, and checks that changing the password invalidates the user's existing keys
+
 ## Facts
 
 ### How it is built and shipped
@@ -437,6 +601,47 @@ sequenceDiagram
   - [bootzooka › bootzooka-ci.yml:44](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/.github/workflows/bootzooka-ci.yml#L44) `sbt "backend/generateOpenAPIDescription"`
   - [bootzooka › bootzooka-ci.yml:48](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/.github/workflows/bootzooka-ci.yml#L48) `sbt testFull`
   - [bootzooka › bootzooka-ci.yml:58](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/.github/workflows/bootzooka-ci.yml#L58) `if: github.ref == 'refs/heads/master'`
+
+### Local development
+
+- The UI dev server listens on port **8081**; the backend listens on port **8080** by default (`API_PORT` / `PORT` override it).
+  - [bootzooka › vite.config.ts:16](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/ui/vite.config.ts#L16) `port: 8081`
+  - [bootzooka › application.conf:5](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/resources/application.conf#L5) `port = 8080`
+- In development the UI and the backend are different origins. The example UI env file sets the API base URL to `http://localhost:8080/api/v1`, and the backend installs Tapir's CORS interceptor with its default settings.
+  - [bootzooka › .env.example:1](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/ui/.env.example#L1) `http://localhost:8080/api/v1`
+  - [bootzooka › HttpApi.scala:47](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala#L47) `.corsInterceptor(CORSInterceptor.default[Identity])`
+- Start scripts: `backend-start.sh` runs the backend under sbt with automatic restart and sets `OTEL_SDK_DISABLED=true`; `frontend-start.sh` runs `yarn start` in `ui/`.
+  - [bootzooka › backend-start.sh:12](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend-start.sh#L12) `sbt --server "~backend/reStart"`
+  - [bootzooka › backend-start.sh:4](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend-start.sh#L4) `export OTEL_SDK_DISABLED=true`
+  - [bootzooka › frontend-start.sh:4](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/frontend-start.sh#L4) `yarn start`
+- `docker-compose.yml` runs PostgreSQL with its port published on host port **25432**, while the backend's default database port is 5432 (`SQL_PORT` overrides it).
+  - [bootzooka › docker-compose.yml:24](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L24) `- '25432:5432'`
+  - [bootzooka › application.conf:21](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/resources/application.conf#L21) `port = 5432`
+  - [bootzooka › application.conf:22](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/backend/src/main/resources/application.conf#L22) `port = ${?SQL_PORT}`
+- The same compose file starts a `grafana/otel-lgtm` container, and the backend container is pointed at its OTLP endpoint with environment variables; Grafana is on host port 3000.
+  - [bootzooka › docker-compose.yml:32](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L32) `image: 'grafana/otel-lgtm'`
+  - [bootzooka › docker-compose.yml:15](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L15) `OTEL_EXPORTER_OTLP_ENDPOINT: 'http://observability:4318'`
+  - [bootzooka › docker-compose.yml:34](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/docker-compose.yml#L34) `- '3000:3000'`
+
+### Deployment to Kubernetes
+
+- A Helm chart named `bootzooka` lives in `helm/bootzooka`; it can install a Bitnami PostgreSQL sub-chart (`postgresql.enabled`).
+  - [bootzooka › Chart.yaml:4](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/helm/bootzooka/Chart.yaml#L4) `name: bootzooka`
+  - [bootzooka › Chart.yaml:26](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/helm/bootzooka/Chart.yaml#L26) `condition: postgresql.enabled`
+- The chart passes settings to the container as environment variables from a ConfigMap and a Secret, including SMTP, database and OpenTelemetry settings; OpenTelemetry is off unless `bootzooka.otel.enabled` is true.
+  - [bootzooka › deployment.yaml:26](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/helm/bootzooka/templates/deployment.yaml#L26) `envFrom:`
+  - [bootzooka › configmap.yaml:19](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/helm/bootzooka/templates/configmap.yaml#L19) `OTEL_SDK_DISABLED: "{{ not .Values.bootzooka.otel.enabled }}"`
+  - [bootzooka › configmap.yaml:7](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/helm/bootzooka/templates/configmap.yaml#L7) `SMTP_ENABLED`
+- The chart has its own workflow, `bootzooka-helm-ci.yaml`, triggered by changes under `helm/` or `.github/` (pushes to `master`). When chart-testing finds a changed chart, it lints it, installs it on kind clusters for three Kubernetes versions, and checks that the generated chart docs have no diff.
+  - [bootzooka › bootzooka-helm-ci.yaml:6](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/.github/workflows/bootzooka-helm-ci.yaml#L6) `- "helm/**"`
+  - [bootzooka › bootzooka-helm-ci.yaml:53](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/.github/workflows/bootzooka-helm-ci.yaml#L53) `ct lint --config .github/helm-ct.yml`
+  - [bootzooka › bootzooka-helm-ci.yaml:103](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/.github/workflows/bootzooka-helm-ci.yaml#L103) `ct install --config .github/helm-ct.yml`
+  - [bootzooka › bootzooka-helm-ci.yaml:124](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/.github/workflows/bootzooka-helm-ci.yaml#L124) `run: git diff --exit-code`
+  - [bootzooka › bootzooka-helm-ci.yaml:9](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/.github/workflows/bootzooka-helm-ci.yaml#L9) `- master`
+  - [bootzooka › bootzooka-helm-ci.yaml:43](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/.github/workflows/bootzooka-helm-ci.yaml#L43) `name: Run chart-testing (list-changed)`
+- In that workflow the job named *Publish Helm Chart* (push events only) consists of a repository checkout step and no later steps.
+  - [bootzooka › bootzooka-helm-ci.yaml:133](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/.github/workflows/bootzooka-helm-ci.yaml#L133) `name: Publish Helm Chart`
+  - [bootzooka › bootzooka-helm-ci.yaml:138](https://github.com/softwaremill/bootzooka/blob/8d93dde94418ac4771be095ef74376561f7de444/.github/workflows/bootzooka-helm-ci.yaml#L138) `uses: actions/checkout@v2`
 
 ### Conventions
 

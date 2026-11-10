@@ -18,15 +18,16 @@ git host, including monorepos.
 
 Examples, each with its verification results:
 
-| Example | Stack | Map | Spot-check of 30 claims |
+| Example | Stack | Map | Spot-check of 30 claims after the build |
 |---|---|---|---|
 | [`online-boutique`](examples/online-boutique) | Go, C#, Node, Python, Java; gRPC | 17 components, 25 connections, 3 flows, 411 references | (built step by step, reviewed twice) |
 | [`eshop`](examples/eshop) | .NET; RabbitMQ events, gRPC, PostgreSQL, Redis | 16 components, 31 connections, 3 flows, 263 references | 26 correct, 4 minor, 0 wrong |
-| [`petclinic`](examples/petclinic) | Java Spring Cloud; gateway, Eureka, config server; **two repos** | 17 components, 35 connections, 7 flows, 452 references | 28 correct, 2 minor, 0 wrong |
-| [`bootzooka`](examples/bootzooka) | **Scala** 3 modular monolith; React UI, PostgreSQL, e-mail | 13 components, 19 connections, 3 flows, 141 references | 28 correct, 2 minor, 0 wrong |
+| [`petclinic`](examples/petclinic) | Java Spring Cloud; gateway, Eureka, config server; **two repos** | 17 components, 35 connections, 7 flows, 470 references | 28 correct, 2 minor, 0 wrong |
+| [`bootzooka`](examples/bootzooka) | **Scala** 3 modular monolith; React UI, PostgreSQL, e-mail | 17 components, 31 connections, 4 flows, 252 references | 28 correct, 2 minor, 0 wrong |
 
 The eShop, PetClinic and Bootzooka maps were built by unattended runs of the plugin with no human steering, and the
-eShop and PetClinic maps were then extended by unattended runs of the update skill. Minor items found by the
+eShop, PetClinic and Bootzooka maps were then extended by unattended runs of the update skill, adding what the
+spot-checks said a newcomer would still want. Minor items found by the
 spot-checks were fixed afterwards.
 
 ![Map view: a component card with its connections and evidence](docs/map.png)

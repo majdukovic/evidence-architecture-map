@@ -19,6 +19,10 @@
     {
       "id": "external",
       "label": "Third-party systems"
+    },
+    {
+      "id": "deploy",
+      "label": "Local and cluster deployment"
     }
   ],
   "components": [
@@ -132,6 +136,7 @@
       "layer": "services",
       "repo": "bootzooka",
       "purpose": "Authenticates a request by looking its token up in the database and checking its expiry. The same <code>Auth</code> class serves API keys (multi-use, kept) and password reset codes (one-time, deleted when used).",
+      "callout": "<b>Logout</b> deletes the API key sent in the request <i>body</i> (<code>Logout_IN.apiKey</code>), not necessarily the key that authenticated the call. <b>Change password</b> validates the new password and deletes all of the user's API keys, then issues a new one; <b>password reset</b> does neither (see the API key flow).",
       "stores": [
         "PostgreSQL: api_keys"
       ],
@@ -143,6 +148,18 @@
         {
           "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/security/ApiKeyModel.scala:31",
           "quote": "override def deleteWhenValid: Boolean = false"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:38",
+          "quote": "userService.logout(data.apiKey.asId[ApiKey])"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala:130",
+          "quote": "apiKeyService.invalidateAllForUser(user.id)"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala:135",
+          "quote": "validateNewPassword().ok()"
         }
       ]
     },
@@ -153,6 +170,7 @@
       "layer": "services",
       "repo": "bootzooka",
       "purpose": "Creates a one-time reset code for a user and schedules an e-mail carrying a link with it; a second endpoint exchanges a valid code and a new password for a password change.",
+      "callout": "Resetting a password only writes the new hash: the new password is not validated (unlike registration and change-password) and the user's existing API keys stay valid (change-password deletes them all).",
       "exposes": [
         "POST /passwordreset/forgot",
         "POST /passwordreset/reset"
@@ -168,6 +186,10 @@
         {
           "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetApi.scala:29",
           "quote": "val passwordResetEndpoint = baseEndpoint.post"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetService.scala:52",
+          "quote": "db.transact(userModel.updatePassword(userId, User.hashPassword(newPassword)))"
         }
       ]
     },
@@ -178,6 +200,7 @@
       "layer": "services",
       "repo": "bootzooka",
       "purpose": "Other modules only insert an e-mail row; a background loop started at startup sends rows in batches and then deletes them. A second loop reports the queue size as a metric.",
+      "callout": "A batch is sent in full and only then deleted. If the sender throws part-way, nothing in the batch is deleted, the loop logs the error, and the rows stay in the outbox and are read again in a later round, so e-mails already sent earlier in that batch are sent again.",
       "stores": [
         "PostgreSQL: scheduled_emails"
       ],
@@ -189,6 +212,14 @@
         {
           "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala:39",
           "quote": "foreverPeriodically(\"Exception when sending emails\")"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala:33",
+          "quote": "db.transact(emailModel.delete(emails.map(_.id)))"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala:54",
+          "quote": "catch case NonFatal(e) => logger.error(errorMsg, e)"
         }
       ]
     },
@@ -199,6 +230,7 @@
       "layer": "services",
       "repo": "bootzooka",
       "purpose": "Strategy chosen at startup from configuration: Mailgun if enabled, otherwise SMTP if enabled, otherwise a dummy sender that only logs and keeps the message in memory.",
+      "callout": "E-mail templates are plain-text <code>.txt</code> files, but the Mailgun sender posts the message text in Mailgun's <code>html</code> field; the SMTP sender sets it as a <code>plain</code> text part.",
       "evidence": [
         {
           "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/EmailSender.scala:10",
@@ -207,6 +239,18 @@
         {
           "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/DummyEmailSender.scala:16",
           "quote": "Would send email, if this wasn't a dummy email service implementation"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/MailgunEmailSender.scala:22",
+          "quote": "\"html\" -> email.content"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailTemplateRenderer.scala:12",
+          "quote": "/templates/email/$templateNameWithoutExtension.txt"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/SmtpEmailSender.scala:64",
+          "quote": "m.setText(emailDescription.message, encoding, \"plain\")"
         }
       ]
     },
@@ -315,6 +359,162 @@
         {
           "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/SmtpEmailSender.scala:99",
           "quote": "transport.sendMessage(m, m.getAllRecipients)"
+        }
+      ]
+    },
+    {
+      "id": "otel",
+      "label": "OpenTelemetry",
+      "short": "Traces, metrics, logs",
+      "layer": "services",
+      "repo": "bootzooka",
+      "purpose": "At startup the backend creates an OpenTelemetry SDK configured from <code>OTEL_*</code> environment variables, adds JVM runtime metrics and installs the Logback appender that sends logs through it. The HTTP server gets Tapir tracing and metrics interceptors, the outgoing HTTP client is wrapped with tracing and metrics, and a <code>Metrics</code> class defines two custom instruments: a counter bumped on each registration request and an e-mail queue gauge.",
+      "callout": "The SDK is created in <code>Dependencies.create</code>; where the data goes is decided by <code>OTEL_*</code> environment variables or <code>otel.*</code> system properties (docker-compose sets an OTLP endpoint, <code>backend-start.sh</code> sets <code>OTEL_SDK_DISABLED=true</code>).",
+      "exposes": [
+        "Metric: bootzooka_registered_users_counter",
+        "Metric: bootzooka_email_queue_gauge"
+      ],
+      "evidence": [
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:68",
+          "quote": "AutoConfiguredOpenTelemetrySdk"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:71",
+          "quote": "RuntimeMetrics.create(otel).discard"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:72",
+          "quote": "OpenTelemetryAppender.install"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala:43",
+          "quote": ".prependInterceptor(OpenTelemetryTracing(otel))"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala:48",
+          "quote": "OpenTelemetryMetrics.default[Identity](otel)"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:42",
+          "quote": "OpenTelemetryTracingBackend(HttpClientSyncBackend(), otel)"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/metrics/Metrics.scala:11",
+          "quote": ".counterBuilder(\"bootzooka_registered_users_counter\")"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/metrics/Metrics.scala:17",
+          "quote": ".gaugeBuilder(\"bootzooka_email_queue_gauge\")"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/infrastructure/SetTraceIdInMDCInterceptor.scala:20",
+          "quote": "Span.current().getSpanContext().getTraceId()"
+        },
+        {
+          "ref": "bootzooka:backend-start.sh:4",
+          "quote": "export OTEL_SDK_DISABLED=true"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:80",
+          "quote": "sys.props.toSeq.filter((k, _) => k.startsWith(\"otel.\"))"
+        }
+      ]
+    },
+    {
+      "id": "otel-lgtm",
+      "label": "grafana/otel-lgtm",
+      "short": "Local observability stack",
+      "layer": "external",
+      "repo": "bootzooka",
+      "purpose": "A <code>grafana/otel-lgtm</code> container in docker-compose; its comment names an OpenTelemetry Collector, Prometheus, Loki, Tempo and Grafana. Grafana's UI is published on host port 3000.",
+      "condition": "Only in the docker-compose stack (or wherever an OTLP endpoint is configured)",
+      "exposes": [
+        "Grafana UI :3000 (published to the host)"
+      ],
+      "evidence": [
+        {
+          "ref": "bootzooka:docker-compose.yml:32",
+          "quote": "image: 'grafana/otel-lgtm'"
+        },
+        {
+          "ref": "bootzooka:docker-compose.yml:34",
+          "quote": "- '3000:3000'"
+        },
+        {
+          "ref": "bootzooka:docker-compose.yml:30",
+          "quote": "OpenTelemetry Collector, Prometheus, Loki, Tempo, Grafana"
+        },
+        {
+          "ref": "bootzooka:docker-compose.yml:15",
+          "quote": "OTEL_EXPORTER_OTLP_ENDPOINT: 'http://observability:4318'"
+        }
+      ]
+    },
+    {
+      "id": "compose",
+      "label": "docker-compose stack",
+      "short": "Local containers",
+      "layer": "deploy",
+      "repo": "bootzooka",
+      "purpose": "<code>docker-compose.yml</code> starts the published backend image on port 8080, a PostgreSQL 17.5 container whose port 5432 is published on host port <b>25432</b>, and the <code>grafana/otel-lgtm</code> observability container.",
+      "exposes": [
+        "host :8080 (backend)",
+        "host :25432 (PostgreSQL)",
+        "host :3000 (Grafana)"
+      ],
+      "evidence": [
+        {
+          "ref": "bootzooka:docker-compose.yml:3",
+          "quote": "image: 'softwaremill/bootzooka:latest'"
+        },
+        {
+          "ref": "bootzooka:docker-compose.yml:22",
+          "quote": "image: 'postgres:17.5'"
+        },
+        {
+          "ref": "bootzooka:docker-compose.yml:24",
+          "quote": "- '25432:5432'"
+        }
+      ]
+    },
+    {
+      "id": "helm-chart",
+      "label": "Helm chart",
+      "short": "helm/bootzooka",
+      "layer": "deploy",
+      "repo": "bootzooka",
+      "purpose": "Chart <code>bootzooka</code> for Kubernetes: a Deployment of the backend image (container port 8080) configured through a ConfigMap and a Secret, a Service, an Ingress, and an optional Bitnami PostgreSQL sub-chart. Its own GitHub Actions workflow lints it, test-installs it on kind clusters and checks the generated chart docs.",
+      "exposes": [
+        "Deployment (port 8080)",
+        "Service",
+        "Ingress"
+      ],
+      "evidence": [
+        {
+          "ref": "bootzooka:helm/bootzooka/Chart.yaml:4",
+          "quote": "name: bootzooka"
+        },
+        {
+          "ref": "bootzooka:helm/bootzooka/templates/deployment.yaml:26",
+          "quote": "envFrom:"
+        },
+        {
+          "ref": "bootzooka:helm/bootzooka/templates/deployment.yaml:33",
+          "quote": "containerPort: 8080"
+        },
+        {
+          "ref": "bootzooka:helm/bootzooka/Chart.yaml:26",
+          "quote": "condition: postgresql.enabled"
+        }
+      ],
+      "tests": [
+        {
+          "kind": "test",
+          "name": "Helm chart CI",
+          "note": "Runs chart-testing lint and install on kind clusters",
+          "ref": "bootzooka:.github/workflows/bootzooka-helm-ci.yaml:103",
+          "quote": "ct install --config .github/helm-ct.yml"
         }
       ]
     }

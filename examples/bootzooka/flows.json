@@ -475,7 +475,7 @@
           "subject": "<subject>",
           "html": "<content>"
         },
-        "description": "Sent as a form body. With SMTP enabled the message goes to the SMTP server; with neither, it is only logged.",
+        "description": "Sent as a form body. The message text is put in Mailgun's <code>html</code> field although the templates are plain-text <code>.txt</code> files (the SMTP sender sends it as a plain-text part). With SMTP enabled the message goes to the SMTP server; with neither, it is only logged.",
         "evidence": [
           {
             "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/MailgunEmailSender.scala:15",
@@ -492,6 +492,14 @@
           {
             "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/MailgunEmailSender.scala:19",
             "quote": "config.senderDisplayName} <${config.senderName}@${config.domain}>"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailTemplateRenderer.scala:12",
+            "quote": "/templates/email/$templateNameWithoutExtension.txt"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/SmtpEmailSender.scala:64",
+            "quote": "m.setText(emailDescription.message, encoding, \"plain\")"
           }
         ]
       },
@@ -502,10 +510,19 @@
         "label": "Delete the sent rows",
         "protocol": "in-process",
         "payloadNote": "sql",
+        "description": "The delete runs once, after the whole batch has been handed to the sender. If the sender throws part-way, this step is not reached, the loop logs the error, and the rows stay in the outbox and are read again in a later round, so e-mails sent earlier in that batch are sent again.",
         "evidence": [
           {
             "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala:33",
             "quote": "db.transact(emailModel.delete(emails.map(_.id)))"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala:32",
+            "quote": "emails.map(_.data).foreach(emailSender.apply)"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala:54",
+            "quote": "catch case NonFatal(e) => logger.error(errorMsg, e)"
           }
         ]
       },
@@ -547,7 +564,7 @@
         "label": "Consume the code and store the new password hash",
         "protocol": "in-process",
         "payloadNote": "sql",
-        "description": "The code is looked up, checked for expiry and deleted when valid (one-time); an unknown or expired code gives an unauthorized error. Then the new Argon2 hash is written.",
+        "description": "The code is looked up, checked for expiry and deleted when valid (one-time); an unknown or expired code gives an unauthorized error. Then the new Argon2 hash is written. Nothing validates the new password and no API key is deleted, so keys issued before the reset keep working (change-password does both; see the API key flow).",
         "evidence": [
           {
             "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetService.scala:50",
@@ -723,6 +740,192 @@
             "quote": "blocking until the application is shut down"
           }
         ]
+      }
+    ]
+  },
+  {
+    "id": "api-key-lifecycle",
+    "title": "Log out and change password",
+    "tagline": "What happens to API keys",
+    "featured": false,
+    "summary": "<b>Logout</b> deletes the API key named in the request body. <b>Change password</b> checks the current password, validates the new one, deletes <i>all</i> of the user's API keys and returns a fresh one. The reset-password flow does neither of the last two.",
+    "actors": [
+      "ui",
+      "http-api",
+      "user",
+      "security",
+      "db"
+    ],
+    "steps": [
+      {
+        "from": "ui",
+        "to": "http-api",
+        "kind": "req",
+        "label": "Log out",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "POST",
+          "target": "/api/v1/user/logout"
+        },
+        "request": {
+          "Authorization": "Bearer <api-key-id>",
+          "apiKey": "<api-key-id>"
+        },
+        "response": {},
+        "requestSchema": {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:109",
+          "quote": "case class Logout_IN(apiKey: String)"
+        },
+        "description": "The navbar sends its stored key in the body; the Bearer header carries a key too. The endpoint's description says it invalidates the used API key, but the handler uses the body value.",
+        "evidence": [
+          {
+            "ref": "bootzooka:ui/src/components/AppNavbar/index.tsx:68",
+            "quote": "logout({ body: { apiKey } })"
+          },
+          {
+            "ref": "bootzooka:ui/src/api/apiComponents.ts:139",
+            "quote": "url: \"/user/logout\""
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:79",
+            "quote": "Logs out a user, invalidating the used API key."
+          }
+        ]
+      },
+      {
+        "from": "user",
+        "to": "security",
+        "kind": "req",
+        "label": "Authenticate the Bearer token",
+        "protocol": "in-process",
+        "payloadNote": "internal",
+        "description": "Logout is a secured endpoint, so the header key is checked first; the handler then ignores the authenticated key id (<code>_ =></code>).",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:37",
+            "quote": "authedEndpoint(logoutEndpoint).handle { _ => data =>"
+          }
+        ]
+      },
+      {
+        "from": "user",
+        "to": "db",
+        "kind": "req",
+        "label": "Delete the key from the body",
+        "protocol": "in-process",
+        "payloadNote": "sql",
+        "description": "The key id from the body is deleted. Nothing in these lines compares it with the key that authenticated the call.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:38",
+            "quote": "userService.logout(data.apiKey.asId[ApiKey])"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala:67",
+            "quote": "apiKeyService.invalidate(id)"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/security/ApiKeyService.scala:25",
+            "quote": "apiKeyModel.delete(id)"
+          }
+        ]
+      },
+      {
+        "from": "ui",
+        "to": "http-api",
+        "kind": "req",
+        "label": "Change password",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "POST",
+          "target": "/api/v1/user/changepassword"
+        },
+        "request": {
+          "Authorization": "Bearer <api-key-id>",
+          "currentPassword": "<password>",
+          "newPassword": "<new-password>"
+        },
+        "response": {
+          "apiKey": "<new-api-key-id>"
+        },
+        "requestSchema": {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:103",
+          "quote": "case class ChangePassword_IN("
+        },
+        "responseSchema": {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:104",
+          "quote": "case class ChangePassword_OUT(apiKey: String)"
+        },
+        "description": "Sent by the Profile page's password form.",
+        "evidence": [
+          {
+            "ref": "bootzooka:ui/src/pages/Profile/components/PasswordDetails.tsx:59",
+            "quote": "usePostUserChangepassword({"
+          },
+          {
+            "ref": "bootzooka:ui/src/api/apiComponents.ts:186",
+            "quote": "url: \"/user/changepassword\""
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:41",
+            "quote": "authedEndpoint(changePasswordEndpoint).handle { id => data =>"
+          }
+        ]
+      },
+      {
+        "from": "user",
+        "to": "db",
+        "kind": "req",
+        "label": "Verify, validate, update, delete all keys, create a new key",
+        "protocol": "in-process",
+        "payloadNote": "sql",
+        "description": "The current password must verify and the new one must pass validation (non-empty). The new hash is stored, a notification e-mail is scheduled, all of the user's API keys are deleted and a new one is created and returned.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala:118",
+            "quote": "verifyPassword(user, currentPassword, validationErrorMsg = \"Incorrect current password\")"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala:135",
+            "quote": "validateNewPassword().ok()"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala:130",
+            "quote": "apiKeyService.invalidateAllForUser(user.id)"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala:131",
+            "quote": "apiKeyService.create(user.id, config.defaultApiKeyValid)"
+          }
+        ]
+      },
+      {
+        "from": "http-api",
+        "to": "ui",
+        "kind": "res",
+        "label": "Return the new API key",
+        "protocol": "HTTP",
+        "response": {
+          "apiKey": "<new-api-key-id>"
+        },
+        "responseSchema": {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:104",
+          "quote": "case class ChangePassword_OUT(apiKey: String)"
+        },
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:43",
+            "quote": "ChangePassword_OUT(apiKey.id.toString)"
+          }
+        ]
+      }
+    ],
+    "tests": [
+      {
+        "name": "UserApiTest",
+        "why": "Logs out, and checks that changing the password invalidates the user's existing keys",
+        "ref": "bootzooka:backend/src/test/scala/com/softwaremill/bootzooka/user/UserApiTest.scala:197",
+        "quote": "should \"create new session and invalidate all existing user's sessions\" in {"
       }
     ]
   }

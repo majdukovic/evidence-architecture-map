@@ -8,7 +8,8 @@ description: Use when an existing evidence-grounded architecture map (a folder w
 The map must stay true to the code: every statement points at a line on the default branch. If you cannot point
 at it, leave it out. The HTML and Markdown are generated; edit only the JSON (and `intro.html` / `about.html`).
 
-The scripts and rules live in the `build-architecture-map` skill folder: `scripts/build.js`, `scripts/verify.js`,
+The scripts and rules live in the `build-architecture-map` skill folder, next to this one
+(`${CLAUDE_SKILL_DIR}/../build-architecture-map` in the plugin; `<build-skill-dir>` below): `scripts/build.js`, `scripts/verify.js`,
 `references/evidence-rules.md`, `references/data-format.md`, `references/where-to-look.md`,
 `references/review-brief.md`. Read the evidence rules first. Run scripts with `node`; `scripts/show.js <repo-dir> <path>
 [from] [to]` prints a file from the default branch with line numbers, for exact quotes. Read code with
@@ -46,9 +47,10 @@ decide from code alone whether each cited line proves the statement. Apply its c
 ## 4. Build and verify
 
 ```bash
-node <build-skill-dir>/scripts/build.js <map-dir> --verify          # all references OK on the current pins
+node <build-skill-dir>/scripts/build.js <map-dir> --verify          # all references OK on the current pins; fix every "note" on a line you edited
 node <build-skill-dir>/scripts/build.js <map-dir> --pin --verify    # move every link to today's default branch
 ```
 
-Run the UI audit (`scripts/ui-audit.js`) if Playwright is available. Summarise for the user what changed, how many
+Run the UI audit as the build skill describes (Playwright MCP with a `file://` page, or `scripts/run-ui-audit.mjs` with
+Playwright installed in your folder); if neither is possible, say so in your report. Summarise for the user what changed, how many
 references pass, what the review corrected and what was dropped. Commit only when asked.

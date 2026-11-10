@@ -12,13 +12,15 @@ Built by an unattended `claude -p` run that had only this plugin and the prompt 
 | | |
 |---|---|
 | Map | 17 components, 35 connections, 7 flows (57 steps), 34 facts, across 2 repos |
-| Evidence | 452 references, all OK on `main` |
+| Evidence | 470 references, all OK on `main` |
 | CoVe | 40 neutral questions answered by agents that never saw the draft |
 | Adversarial review | 21 findings, applied or narrowed (for example, vets caching is off under docker-compose) |
 | Independent spot-check (30 sampled claims) | 28 correct, 2 minor, 0 wrong; the 2 minor ones were then fixed |
 | Update run (`update-architecture-map`, unattended) | 4 of the 5 gaps the first spot-check found were added; how the admin server finds services was dropped (it is library behaviour outside these repos) |
 | Spot-check of the 23 added statements | 22 correct, 1 minor, 0 wrong; the minor one was then fixed |
-| Cost | about USD 8 across the build and the update |
+| Second update run | the gateway's default circuit breaker on the owner and pet routes, from the configuration only; what the library does on a timeout was left out |
+| Spot-check of the 6 changed statements | 6 correct |
+| Cost | about USD 9 across the build and two updates |
 
 The update added flows for creating and editing owners and pets, the gateway's 10-second circuit-breaker limit, the
 shared database settings under the `mysql` profile, and what the code shows about chat memory. The update run first

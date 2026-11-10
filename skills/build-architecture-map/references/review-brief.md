@@ -27,4 +27,8 @@ For every component, connection, flow step and fact, open each cited line (with 
 Return **only the items that fail**, as a table:
 `item (e.g. connection orders -> payments) | problem | evidence for your view (repo:path:line + quote) | suggested fix (corrected text, better evidence, or "drop")`.
 
-If everything holds, say so in one line. Do not rewrite items that are correct.
+If everything holds, say so in one line.
+
+Run only commands of the form `git -C <repo> ...` or `node <script> ...` with absolute paths, one per call: other
+shell commands may be refused in unattended runs. If your shell is refused entirely, say so instead of reviewing
+from memory. Do not rewrite items that are correct.

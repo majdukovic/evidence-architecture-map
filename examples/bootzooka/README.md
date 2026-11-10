@@ -9,19 +9,22 @@ Built by an unattended `claude -p` run that had only this plugin and the prompt 
 
 | | |
 |---|---|
-| Map | 13 components, 19 connections, 3 flows (29 steps), 8 facts |
-| Evidence | 141 references, all OK on `master` |
+| Map | 17 components, 31 connections, 4 flows (35 steps), 17 facts |
+| Evidence | 252 references, all OK on `master` |
 | CoVe | 45 neutral questions answered by agents that never saw the draft; corrections included a UI call that does not exist and a payload field the UI does send |
 | Independent spot-check (30 sampled claims) | 28 correct, 2 minor, 0 wrong; the minor ones were then fixed |
-| Cost | about USD 4 |
+| Update run (`update-architecture-map`, unattended) | added the 5 gaps the spot-check found; claims that depend on library behaviour (what CORS permits, which OTLP signals are sent) were narrowed |
+| Spot-check of the 35 added statements | 33 correct, 2 minor, 0 wrong; the minor ones were then fixed |
+| Cost | about USD 6 across the build and the update |
 
 A finding about Bootzooka itself, confirmed by the spot-check: the password reset e-mail links to
 `/password-reset?code=...`, but the UI router has no such route, so the link lands on the not-found page; with the
 default settings it also points at the dev-server port.
 
-Things the spot-check said a newcomer would still want, left for a later update: OpenTelemetry tracing and metrics,
-the local dev setup (ports, CORS, docker-compose Postgres), the Helm chart, logout and password-reset behaviour around
-API keys, and that the e-mail outbox can resend a batch after a partial failure.
+The update added OpenTelemetry (SDK, Tapir tracing and metrics, the otel-lgtm container), the local development
+setup, the Helm chart and its CI, a flow for the API-key lifecycle (logout and password reset do not do what you might
+assume), and how the e-mail outbox can send a batch twice. The update run noted committed development passwords in
+`docker-compose.yml` and the Helm `values.yaml`; the map does not cite those lines.
 
 Check it yourself:
 

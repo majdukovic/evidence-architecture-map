@@ -33,3 +33,23 @@ Not adopted: a separate fact "UI has no /password-reset route" (absence claim; r
 
 ## Mechanical check
 `build.js --pin --verify`: 138/138 references OK.
+
+## Update 2026-11-10: five hints from an independent reviewer
+Each hint was re-read in code on `origin/HEAD` before it went on the map.
+| Hint | Result | Where on the map |
+|---|---|---|
+| 1 Observability | Confirmed: SDK autoconfigure, runtime metrics, logback appender (`Dependencies.scala:68-72`), Tapir tracing and metrics (`HttpApi.scala:43,48`), traced and metered sttp backend (`Dependencies.scala:42`), two custom instruments (`Metrics.scala`), compose OTLP env and `grafana/otel-lgtm` | components `otel`, `otel-lgtm`; connections from main, http-api, user, email-service, email-sender; `otel -> otel-lgtm` |
+| 2 Local development | 8081 (`vite.config.ts:16`), 8080 default, both start scripts, compose Postgres `25432:5432` confirmed. CORS narrowed (see dropped.md) | facts "Local development"; component `compose`; ui -> http-api text |
+| 3 Helm | Chart, templates, values and its own workflow confirmed; "publishes" not confirmed | component `helm-chart`; facts "Deployment to Kubernetes"; 3 connections |
+| 4 API keys | Logout deletes `data.apiKey` from the body and ignores the authenticated id (`UserApi.scala:37-38`); reset does `updatePassword` only (`PasswordResetService.scala:49-53`; search `validate\|invalidate\|apiKey` over `passwordreset/` finds only config validation); change-password validates, deletes all keys, creates one (`UserService.scala:130-137`) | callouts on `security`, `password-reset`; flow `api-key-lifecycle`; reset-flow step text |
+| 5 E-mail | Whole batch sent, then deleted (`EmailService.scala:32-33`), errors caught in the loop (`:54`); Mailgun posts `html` (`MailgunEmailSender.scala:22`) while templates are `.txt` and SMTP uses `plain` | callouts on `email-service`, `email-sender`; reset-flow step text |
+
+### Adversarial review (fresh agent with git, new items only)
+| Item | Problem | Action |
+|---|---|---|
+| connection user -> otel; otel purpose | counter is incremented before the result check, so failures count | wording fixed |
+| component otel-lgtm `exposes` OTLP :4318 | no cited line shows it | removed |
+Everything else the reviewer was pointed at held (logout, reset vs change-password, batch resend, html field, helm publish job, CORS and OTLP wording, no credentials quoted).
+
+### Mechanical check
+`build.js --pin --verify`: 249/249 references OK. `ui-audit` not run (see report).

@@ -974,7 +974,7 @@
           "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerRequest.java:6",
           "quote": "public record OwnerRequest(@NotBlank String firstName"
         },
-        "description": "All five fields must be non-blank and the telephone at most 12 digits, or the request is rejected. The gateway is configured with a default Retry filter for POST on 503 (retries: 1).",
+        "description": "All five fields must be non-blank and the telephone at most 12 digits, or the request is rejected. The gateway is configured with a default Retry filter for POST on 503 (retries: 1). Its default filters also list a <code>CircuitBreaker</code> (fallback <code>forward:/fallback</code>), and the customers-service route lists only <code>StripPrefix=2</code>. The default circuit-breaker customizer sets a 10-second time limit, and <code>/fallback</code> accepts GET and POST and returns 503.",
         "evidence": [
           {
             "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:34",
@@ -995,6 +995,26 @@
           {
             "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java:59",
             "quote": "createOwner(@Valid @RequestBody OwnerRequest ownerRequest)"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:10",
+            "quote": "default-filters:"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:11",
+            "quote": "- name: CircuitBreaker"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:14",
+            "quote": "fallbackUri: forward:/fallback"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java:88",
+            "quote": "timeoutDuration(Duration.ofSeconds(10))"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/FallbackController.java:15",
+            "quote": "HttpStatus.SC_SERVICE_UNAVAILABLE"
           },
           {
             "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerRequest.java:11",
@@ -1149,8 +1169,25 @@
           {
             "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java:83",
             "quote": "@PutMapping(value = \"/{ownerId}\")"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:10",
+            "quote": "default-filters:"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:11",
+            "quote": "- name: CircuitBreaker"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:14",
+            "quote": "fallbackUri: forward:/fallback"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java:88",
+            "quote": "timeoutDuration(Duration.ofSeconds(10))"
           }
-        ]
+        ],
+        "description": "The gateway's default filters list a <code>CircuitBreaker</code> (fallback <code>forward:/fallback</code>), and the customers-service route lists only <code>StripPrefix=2</code>. The default circuit-breaker customizer sets a 10-second time limit."
       },
       {
         "from": "customers-service",
@@ -1334,7 +1371,7 @@
           "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetRequest.java:27",
           "quote": "record PetRequest("
         },
-        "description": "A birth date in the future is rejected with 400 (bean validation). The gateway is configured with a default Retry filter for POST on 503 (retries: 1).",
+        "description": "A birth date in the future is rejected with 400 (bean validation). The gateway is configured with a default Retry filter for POST on 503 (retries: 1). Its default filters also list a <code>CircuitBreaker</code> (fallback <code>forward:/fallback</code>), and the customers-service route lists only <code>StripPrefix=2</code>. The default circuit-breaker customizer sets a 10-second time limit, and <code>/fallback</code> accepts GET and POST and returns 503.",
         "evidence": [
           {
             "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:34",
@@ -1351,6 +1388,26 @@
           {
             "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java:55",
             "quote": "@PostMapping(\"/owners/{ownerId}/pets\")"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:10",
+            "quote": "default-filters:"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:11",
+            "quote": "- name: CircuitBreaker"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:14",
+            "quote": "fallbackUri: forward:/fallback"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java:88",
+            "quote": "timeoutDuration(Duration.ofSeconds(10))"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/FallbackController.java:15",
+            "quote": "HttpStatus.SC_SERVICE_UNAVAILABLE"
           },
           {
             "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetRequest.java:29",
@@ -1581,7 +1638,7 @@
           "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetRequest.java:27",
           "quote": "record PetRequest("
         },
-        "description": "The owner id in the path is a wildcard and is not used; the pet is found by its own id.",
+        "description": "The owner id in the path is a wildcard and is not used; the pet is found by its own id. The gateway's default filters list a <code>CircuitBreaker</code> (fallback <code>forward:/fallback</code>), and the customers-service route lists only <code>StripPrefix=2</code>. The default circuit-breaker customizer sets a 10-second time limit.",
         "evidence": [
           {
             "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:34",
@@ -1598,6 +1655,22 @@
           {
             "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java:69",
             "quote": "@PutMapping(\"/owners/*/pets/{petId}\")"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:10",
+            "quote": "default-filters:"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:11",
+            "quote": "- name: CircuitBreaker"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:14",
+            "quote": "fallbackUri: forward:/fallback"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java:88",
+            "quote": "timeoutDuration(Duration.ofSeconds(10))"
           }
         ]
       },

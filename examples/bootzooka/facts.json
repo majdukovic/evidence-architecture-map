@@ -49,6 +49,165 @@
     ]
   },
   {
+    "group": "Local development",
+    "items": [
+      {
+        "text": "The UI dev server listens on port <b>8081</b>; the backend listens on port <b>8080</b> by default (<code>API_PORT</code> / <code>PORT</code> override it).",
+        "evidence": [
+          {
+            "ref": "bootzooka:ui/vite.config.ts:16",
+            "quote": "port: 8081"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/resources/application.conf:5",
+            "quote": "port = 8080"
+          }
+        ]
+      },
+      {
+        "text": "In development the UI and the backend are different origins. The example UI env file sets the API base URL to <code>http://localhost:8080/api/v1</code>, and the backend installs Tapir's CORS interceptor with its default settings.",
+        "evidence": [
+          {
+            "ref": "bootzooka:ui/.env.example:1",
+            "quote": "http://localhost:8080/api/v1"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala:47",
+            "quote": ".corsInterceptor(CORSInterceptor.default[Identity])"
+          }
+        ]
+      },
+      {
+        "text": "Start scripts: <code>backend-start.sh</code> runs the backend under sbt with automatic restart and sets <code>OTEL_SDK_DISABLED=true</code>; <code>frontend-start.sh</code> runs <code>yarn start</code> in <code>ui/</code>.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend-start.sh:12",
+            "quote": "sbt --server \"~backend/reStart\""
+          },
+          {
+            "ref": "bootzooka:backend-start.sh:4",
+            "quote": "export OTEL_SDK_DISABLED=true"
+          },
+          {
+            "ref": "bootzooka:frontend-start.sh:4",
+            "quote": "yarn start"
+          }
+        ]
+      },
+      {
+        "text": "<code>docker-compose.yml</code> runs PostgreSQL with its port published on host port <b>25432</b>, while the backend's default database port is 5432 (<code>SQL_PORT</code> overrides it).",
+        "evidence": [
+          {
+            "ref": "bootzooka:docker-compose.yml:24",
+            "quote": "- '25432:5432'"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/resources/application.conf:21",
+            "quote": "port = 5432"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/resources/application.conf:22",
+            "quote": "port = ${?SQL_PORT}"
+          }
+        ]
+      },
+      {
+        "text": "The same compose file starts a <code>grafana/otel-lgtm</code> container, and the backend container is pointed at its OTLP endpoint with environment variables; Grafana is on host port 3000.",
+        "evidence": [
+          {
+            "ref": "bootzooka:docker-compose.yml:32",
+            "quote": "image: 'grafana/otel-lgtm'"
+          },
+          {
+            "ref": "bootzooka:docker-compose.yml:15",
+            "quote": "OTEL_EXPORTER_OTLP_ENDPOINT: 'http://observability:4318'"
+          },
+          {
+            "ref": "bootzooka:docker-compose.yml:34",
+            "quote": "- '3000:3000'"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "group": "Deployment to Kubernetes",
+    "items": [
+      {
+        "text": "A Helm chart named <code>bootzooka</code> lives in <code>helm/bootzooka</code>; it can install a Bitnami PostgreSQL sub-chart (<code>postgresql.enabled</code>).",
+        "evidence": [
+          {
+            "ref": "bootzooka:helm/bootzooka/Chart.yaml:4",
+            "quote": "name: bootzooka"
+          },
+          {
+            "ref": "bootzooka:helm/bootzooka/Chart.yaml:26",
+            "quote": "condition: postgresql.enabled"
+          }
+        ]
+      },
+      {
+        "text": "The chart passes settings to the container as environment variables from a ConfigMap and a Secret, including SMTP, database and OpenTelemetry settings; OpenTelemetry is off unless <code>bootzooka.otel.enabled</code> is true.",
+        "evidence": [
+          {
+            "ref": "bootzooka:helm/bootzooka/templates/deployment.yaml:26",
+            "quote": "envFrom:"
+          },
+          {
+            "ref": "bootzooka:helm/bootzooka/templates/configmap.yaml:19",
+            "quote": "OTEL_SDK_DISABLED: \"{{ not .Values.bootzooka.otel.enabled }}\""
+          },
+          {
+            "ref": "bootzooka:helm/bootzooka/templates/configmap.yaml:7",
+            "quote": "SMTP_ENABLED"
+          }
+        ]
+      },
+      {
+        "text": "The chart has its own workflow, <code>bootzooka-helm-ci.yaml</code>, triggered by changes under <code>helm/</code> or <code>.github/</code> (pushes to <code>master</code>). When chart-testing finds a changed chart, it lints it, installs it on kind clusters for three Kubernetes versions, and checks that the generated chart docs have no diff.",
+        "evidence": [
+          {
+            "ref": "bootzooka:.github/workflows/bootzooka-helm-ci.yaml:6",
+            "quote": "- \"helm/**\""
+          },
+          {
+            "ref": "bootzooka:.github/workflows/bootzooka-helm-ci.yaml:53",
+            "quote": "ct lint --config .github/helm-ct.yml"
+          },
+          {
+            "ref": "bootzooka:.github/workflows/bootzooka-helm-ci.yaml:103",
+            "quote": "ct install --config .github/helm-ct.yml"
+          },
+          {
+            "ref": "bootzooka:.github/workflows/bootzooka-helm-ci.yaml:124",
+            "quote": "run: git diff --exit-code"
+          },
+          {
+            "ref": "bootzooka:.github/workflows/bootzooka-helm-ci.yaml:9",
+            "quote": "- master"
+          },
+          {
+            "ref": "bootzooka:.github/workflows/bootzooka-helm-ci.yaml:43",
+            "quote": "name: Run chart-testing (list-changed)"
+          }
+        ]
+      },
+      {
+        "text": "In that workflow the job named <i>Publish Helm Chart</i> (push events only) consists of a repository checkout step and no later steps.",
+        "evidence": [
+          {
+            "ref": "bootzooka:.github/workflows/bootzooka-helm-ci.yaml:133",
+            "quote": "name: Publish Helm Chart"
+          },
+          {
+            "ref": "bootzooka:.github/workflows/bootzooka-helm-ci.yaml:138",
+            "quote": "uses: actions/checkout@v2"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "group": "Conventions",
     "items": [
       {

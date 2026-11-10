@@ -30,7 +30,9 @@ Every component, connection, flow step and fact needs at least one evidence item
   `reposDir`); `path` is relative to the repo root; `line` is 1-based, on the repo's **default branch**.
 - `quote` is an exact substring of that line, 4 to 120 characters (aim for 10 to 60). Pick the part that proves
   the claim, not boilerplate: `basicRequest.post(uri"$paymentsUrl/charges")`, not `def charge(`.
-- `verify.js` accepts the quote on the cited line or up to two lines away. Anything else fails.
+- `verify.js` accepts the quote on the cited line or up to two lines away (exactly on the line right after `--pin`).
+- One line per reference. To prove something that spans a block (a config section, a multi-line call), cite each key
+  line as its own evidence item.
 
 ## map.json
 
@@ -55,6 +57,9 @@ Every component, connection, flow step and fact needs at least one evidence item
 | `repos.<name>.path` | Clone folder relative to `reposDir`, when it differs from the name. Monorepos are one repo. |
 | `repos.<name>.web` | Web URL of the repo. Normally read from `git remote get-url origin` by `--pin`. |
 | `repos.<name>.clone` | Clone URL for CI (`verify-ci.sh`). Default: `web` + `.git`. |
+| Libraries | To cite a library's source (see *Claims that rest on a library* in `evidence-rules.md`), clone it at the version
+  the build file pins, for example `git clone --branch v4.1.0 --depth 1 <url> <reposDir>/spring-cloud-gateway`, and cite
+  it as `spring-cloud-gateway:path:line`. No `map.json` entry is needed when the folder name is the repo name. |
 | `repos.<name>.fileTemplate` / `treeTemplate` | Custom link format with `{web}`, `{sha}`, `{path}`, `{line}`. |
 | `output.html` / `output.markdown` | Output file names. Default `architecture.html`, `ARCHITECTURE.md`. |
 
@@ -92,6 +97,9 @@ Every component, connection, flow step and fact needs at least one evidence item
 - **Modular monolith** (one deployable with modules): components can be the modules a newcomer needs (often 5 to 12),
   connected `in-process` with the call site as evidence. Use layers that fit, for example `ui`, `api`, `modules`,
   `data`, `external`, instead of the default `services`.
+- **Deployment artefacts** (a Helm chart, docker-compose, Terraform) that newcomers need: put them in a `deploy` layer,
+  connect them to what they start or configure with a short protocol such as `deploys` or `configures`, and cite the
+  manifest lines.
 - **A caller outside the code** (a person following a link in an email, a partner system): add it as a component in
   the `people` or `external` layer, with evidence of what reaches it (the line that builds the link or the webhook).
 - `gateway: true` marks a router (API gateway, ingress, BFF). A flow step with no direct connection is drawn

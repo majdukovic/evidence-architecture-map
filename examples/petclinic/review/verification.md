@@ -64,3 +64,14 @@ Each hint was treated as a hint and checked against origin/HEAD. A fresh agent w
 Reviewer corrections applied: URL ref line (kept, reason above); genai-service also ships the MySQL driver (list widened); compose absence cited as full service list; `PetDetails.birthDate` example changed to the Jackson placeholder (`@DateTimeFormat` does not set JSON format); missing gateway-to-customers hop added for the edit-pet load, and a note that browser-side responses of pre-loads are omitted; Retry wording tied to config (`retries: 1`, `SERVICE_UNAVAILABLE`, POST) and "unchanged" removed; the 400 for a future birth date now cites `PetResourceTest.java:94`; 10 s wording narrowed; chat step says the UI shows its own message and cites route lines 42, 44, 14 and `ChatBox.js:56`; the two fallback URIs (`forward:/fallback`, `/fallback`) stated separately, their combination marked not read; chat-memory fact cites `.user(query)` and the 10-message comment.
 
 Mechanical check after corrections: `build.js --verify` 452/452 references OK.
+
+## Update 2026-11-10: hint 6, default CircuitBreaker on the customers route
+
+Checked `application.yml:10-19, 33-38` (default-filters hold CircuitBreaker and Retry; customers route lists only StripPrefix), `ApiGatewayApplication.java:84-88`, `FallbackController.java:12-15`; `git grep` for retry|circuit|timeout|fallback|resilience over the config repo (only a shutdown comment) and the gateway module; config repo `api-gateway.yml` has no filter or breaker settings. The first review agent had no shell and returned nothing; a second fresh agent reviewed from the pasted code lines (no shell, so it did not read git itself) and reported four problems, all applied:
+
+| Item | Finding | Action |
+|---|---|---|
+| Four gateway -> customers POST/PUT steps | "only time limit configured" is an absence claim with a thin search | Removed; text says the default customizer sets a 10 s limit |
+| PUT steps | `/fallback` maps GET and POST only, so 503 is not shown for PUT | 503 stated only on the two POST steps |
+| All four | "gateway behaviour not read here" hedge, and an implied timeout-to-503 chain | Clause removed, chain dropped (dropped.md) |
+| All four | Line 11 alone does not show default-filters | `application.yml:10` added |
