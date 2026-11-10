@@ -126,6 +126,20 @@ The data format is described in [`data-format.md`](skills/build-architecture-map
 Components and connections that exist only in some setups (a profile, a flag, an optional add-on) carry a
 `condition` and are drawn dashed.
 
+## What the plugin runs and sends
+
+- **Runs locally:** `git` (read-only commands on the repos you point it at, such as `git show`, `git grep`, `git ls-tree`;
+  never `checkout`, `pull` or `push`) and `node` for the bundled scripts. No hooks, no MCP servers, no package installs.
+- **Writes:** only the map folder you choose (JSON, `architecture.html`, `ARCHITECTURE.md`, `review/`).
+- **Network:** the scripts make no network calls, except `verify-ci.sh`, which clones the repos listed in `pins.json`
+  from your own git host. The generated `architecture.html` loads its fonts from Google Fonts (`fonts.googleapis.com`)
+  when someone opens it in a browser; without a connection it falls back to system fonts. `run-ui-audit.mjs` uses
+  Playwright, which you install yourself.
+- **Other sources:** the skill reads docs, tickets, dashboards, chat or agent history only when you allow it, through
+  tools you already have, and never copies their content onto the map.
+- **Personal data:** none is collected or sent anywhere. Evidence quotes are short excerpts of your code, and the build
+  and verifier refuse anything that looks like a credential.
+
 ## Limitations
 
 - The verifier proves a quote is still on the cited line. Whether the line **means** what the claim says is
