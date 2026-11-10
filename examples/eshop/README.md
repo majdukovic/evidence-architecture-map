@@ -25,7 +25,7 @@ Check it yourself:
 
 ```bash
 git clone --depth 1 https://github.com/dotnet/eShop .repos/eShop
-node ../../skills/build-architecture-map/scripts/verify.js .
+node ../../plugin/skills/build-architecture-map/scripts/verify.js .
 ```
 
 eShop is MIT licensed; the map quotes short excerpts and links to it at a fixed commit.

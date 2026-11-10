@@ -4,11 +4,9 @@
 #   bash verify-ci.sh <map-dir> [work-dir]        work-dir defaults to .archmap-repos (add it to .gitignore)
 #
 # Clone URLs come from map.json repos[name].clone, else the "web" URL recorded in pins.json plus ".git".
-# The script uses whatever git credentials the CI job provides: an SSH key with
-#   git config --global url."git@github.com:".insteadOf "https://github.com/"
-# or an HTTPS token with
-#   git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"
-# It never prints credentials. Exit code is verify.js's: 0 OK, 1 references failed, 2 a repo could not be read.
+# The script uses whatever git credentials the CI job already has (an SSH key, or a credential helper set up
+# by the CI system); the repository's examples/ci folder shows setups for GitHub, GitLab and Bitbucket.
+# It never reads or prints credentials itself. Exit code is verify.js's: 0 OK, 1 references failed, 2 a repo could not be read.
 set -euo pipefail
 MAP=${1:?usage: verify-ci.sh <map-dir> [work-dir]}
 WORK=${2:-.archmap-repos}

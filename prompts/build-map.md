@@ -8,9 +8,9 @@ Use this with Claude Code without the plugin, or with any coding agent that can 
 Build an evidence-grounded architecture map of <system name> for <audience, e.g. engineers joining the team>.
 
 Use the kit at <path to a clone of evidence-architecture-map> (clone https://github.com/majdukovic/evidence-architecture-map
-if it is not there). Read `skills/build-architecture-map/SKILL.md` and follow it phase by phase; its
+if it is not there). Read `plugin/skills/build-architecture-map/SKILL.md` and follow it phase by phase; its
 `references/` and `scripts/` folders are the method and the tools. `<skill-dir>` in those files means
-`skills/build-architecture-map` inside the kit.
+`plugin/skills/build-architecture-map` inside the kit.
 
 Inputs:
 - Repos: <list, or "every repo cloned under ~/code/acme">. Read them only through git on each default branch.

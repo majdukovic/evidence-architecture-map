@@ -32,11 +32,11 @@ jobs:
       - name: Let git read the cited repos
         run: git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
       - name: Check every evidence reference
-        run: bash tools/evidence-architecture-map/skills/build-architecture-map/scripts/verify-ci.sh "$MAP_DIR"
+        run: bash tools/evidence-architecture-map/plugin/skills/build-architecture-map/scripts/verify-ci.sh "$MAP_DIR"
       - name: Check the other examples the same way
         run: |
           for m in examples/eshop examples/petclinic examples/bootzooka; do
-            bash tools/evidence-architecture-map/skills/build-architecture-map/scripts/verify-ci.sh "$m" ".archmap-repos/$(basename $m)"
+            bash tools/evidence-architecture-map/plugin/skills/build-architecture-map/scripts/verify-ci.sh "$m" ".archmap-repos/$(basename $m)"
           done
   ui-audit:
     runs-on: ubuntu-24.04   # Playwright 1.60 has no browser builds for newer Ubuntu images
@@ -47,4 +47,4 @@ jobs:
       - name: Install Playwright
         run: npm i --no-save playwright@1.60.0 && npx playwright install --with-deps chromium
       - name: Click through every component and flow step of each example
-        run: for m in examples/online-boutique examples/eshop examples/petclinic examples/bootzooka; do node skills/build-architecture-map/scripts/run-ui-audit.mjs "$m"; done
+        run: for m in examples/online-boutique examples/eshop examples/petclinic examples/bootzooka; do node plugin/skills/build-architecture-map/scripts/run-ui-audit.mjs "$m"; done

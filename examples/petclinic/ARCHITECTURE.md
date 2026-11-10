@@ -977,5 +977,5 @@ sequenceDiagram
 Every reference above is `repo:path:line` plus a quote from that line. To check them all against the repos' default branches:
 
 ```bash
-node <kit>/skills/build-architecture-map/scripts/verify.js petclinic --repos <folder with the repos>
+node <kit>/plugin/skills/build-architecture-map/scripts/verify.js petclinic --repos <folder with the repos>
 ```

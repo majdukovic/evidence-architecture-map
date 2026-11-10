@@ -4,9 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Online Boutique Map</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230f6b5c'/%3E%3Cpath d='M4 4h8M4 8h8M4 12h8' stroke='white' stroke-width='1.6'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
 /* Layout: one-line header with tabs; Map = search + layer filter over a width-fitted layered SVG, with a side card
    (a bottom sheet on phones); Flows = grouped flow list, header grid, fitted sequence lanes over a request/response inspector. */
@@ -110,6 +107,9 @@ svg text { fill: var(--fg); font-family: var(--font-body); }
 .edge.dim { opacity: 0.03; }
 .edge.focus { opacity: 1; stroke-width: 3.2; }
 .edge.fp { stroke: var(--accent); opacity: 0.95; stroke-width: 2.4; }
+.edge.cond { stroke-dasharray: 6 4; }
+.node.cond .box { stroke-dasharray: 6 4; }
+.cond-note { font-size: 0.82rem; color: var(--warn); }
 .badge circle { fill: var(--accent); }
 .badge text { fill: var(--surface); font-weight: 700; text-anchor: middle; }
 .flowbanner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 16px; background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: 0.9rem; }
@@ -354,7 +354,7 @@ td .lay { display: block; font-size: 0.8rem; color: var(--fg-dim); }
       </div>
       <div class="flowbanner" id="flowBanner" hidden></div>
       <div class="map-scroll" id="mapScroll">
-        <div class="map-hint" id="mapHint">Select a box to see what it does and what it talks to. Blue arrows go out, pink arrows come in.</div>
+        <div class="map-hint" id="mapHint">Select a box to see what it does and what it talks to. Blue arrows go out, pink arrows come in. Dashed boxes and lines exist only in some setups.</div>
         <svg id="mapSvg" role="group" aria-label="Platform map: components grouped by layer"></svg>
       </div>
     </div>
@@ -522,7 +522,7 @@ function drawMap() {
   for (const r of rows) s += `<rect class="layer-band" x="4" y="${r.y}" width="${W - 8}" height="${r.h}" rx="10"/><text class="layer-label" x="${16 * k}" y="${r.y + 19 * k}" style="font-size:${(10.5 * k).toFixed(1)}px">${esc(r.l.label)}</text>`;
   D.edges.forEach((e, i) => {
     if (!pos[e.from] || !pos[e.to]) return;
-    let cls = 'edge', mk = 'ah';
+    let cls = 'edge' + (e.condition ? ' cond' : ''), mk = 'ah';
     if (selNode) { if (e.from === selNode) { cls += ' out hi'; mk = 'aho'; } else if (e.to === selNode) { cls += ' in hi'; mk = 'ahi'; } else cls += ' dim'; }
     else if (fp) { if (fp.edges.has(i)) { cls += ' fp'; mk = 'ahf'; } else cls += ' dim'; }
     s += `<path class="${cls}" data-e="${i}" d="${edgePath(e.from, e.to)}" marker-end="url(#${mk})"/>`;
@@ -530,7 +530,7 @@ function drawMap() {
   const fsL = 12.5 * k, fsS = 10.5 * k, fl = `600 ${fsL}px "Source Sans 3", system-ui, sans-serif`, fs = `${fsS}px "Source Sans 3", system-ui, sans-serif`, tx = 13 * k;
   for (const n of D.nodes) {
     const p = pos[n.id]; if (!p) continue;
-    const col = LAYER[n.layer].color, cls = 'node' + (selNode ? (n.id === selNode ? ' sel' : nb.has(n.id) ? '' : ' dim') : fp ? (fp.order.has(n.id) || fp.via.has(n.id) ? '' : ' dim') : '');
+    const col = LAYER[n.layer].color, cls = 'node' + (n.condition ? ' cond' : '') + (selNode ? (n.id === selNode ? ' sel' : nb.has(n.id) ? '' : ' dim') : fp ? (fp.order.has(n.id) || fp.via.has(n.id) ? '' : ' dim') : '');
     const ord = fp && !selNode ? fp.order.get(n.id) : null, br = 10 * k;
     s += `<g class="${cls}" data-id="${n.id}" tabindex="0" role="button" aria-label="${esc(n.label)}: ${esc(n.short || '')}" aria-pressed="${n.id === selNode}">
       <title>${esc(n.label)}${n.short ? ' (' + esc(n.short) + ')' : ''}</title>
@@ -583,7 +583,7 @@ function highlightEdge(i, on) { const p = $(`#mapSvg path[data-e="${i}"]`); if (
 function relRows(n, dir) {
   return D.edges.map((e, i) => [e, i]).filter(([e]) => (dir === 'out' ? e.from : e.to) === n.id).map(([e, i]) => {
     const other = NODE[dir === 'out' ? e.to : e.from];
-    return `<div class="row" data-e="${i}"><span class="p ${dir}">${esc(e.protocol)}</span><button class="lnk" type="button" data-go="${other.id}" data-e="${i}">${esc(other.label)}</button>${e.what ? `<span class="why">${esc(e.what)}</span>` : ''}</div>`;
+    return `<div class="row" data-e="${i}"><span class="p ${dir}">${esc(e.protocol)}</span><button class="lnk" type="button" data-go="${other.id}" data-e="${i}">${esc(other.label)}</button>${e.what || e.condition ? `<span class="why">${esc(e.what || '')}${e.condition ? ` <span class="cond-note">Optional: ${esc(e.condition)}</span>` : ''}</span>` : ''}</div>`;
   }).join('');
 }
 function renderSide() {
@@ -610,6 +610,7 @@ function renderSide() {
         <button class="btn ghost" type="button" id="copyNode">Copy link</button></div>
     </div><button class="btn ghost sheet-close" type="button" aria-label="Close details">Close</button></div>
     <p>${n.purpose}</p>
+    ${n.condition ? `<div class="callout"><b>Optional:</b> ${esc(n.condition)}</div>` : ''}
     ${n.callout ? `<div class="callout">${n.callout}</div>` : ''}
     ${n.exposes && n.exposes.length ? `<div class="sec-t">Exposes</div><div class="tags">${n.exposes.map(x => `<span class="tag">${esc(x)}</span>`).join('')}</div>` : ''}
     ${n.stores && n.stores.length ? `<div class="sec-t">Stores data in</div><div class="tags">${n.stores.map(x => `<span class="tag">${esc(x)}</span>`).join('')}</div>` : ''}

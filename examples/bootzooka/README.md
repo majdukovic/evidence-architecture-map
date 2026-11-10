@@ -30,7 +30,7 @@ Check it yourself:
 
 ```bash
 git clone --depth 1 https://github.com/softwaremill/bootzooka .repos/bootzooka
-node ../../skills/build-architecture-map/scripts/verify.js .
+node ../../plugin/skills/build-architecture-map/scripts/verify.js .
 ```
 
 Bootzooka is Apache License 2.0; the map quotes short excerpts and links to it at a fixed commit.

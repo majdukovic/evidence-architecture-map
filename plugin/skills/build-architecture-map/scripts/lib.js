@@ -55,9 +55,9 @@ function webFromRemote(url) {
   let m = /^git@ssh\.dev\.azure\.com:v3\/([^/]+)\/([^/]+)\/(.+)$/.exec(url);
   if (m) return `https://dev.azure.com/${m[1]}/${m[2]}/_git/${m[3]}`;
   m = /^(?:ssh:\/\/)?[^@/\s]+@([^:/\s]+)(?::\d+)?[:/](.+)$/.exec(url);
-  if (m) return `https://${m[1]}/${m[2]}`;
+  if (m) return 'https://' + m[1] + '/' + m[2];
   m = /^https?:\/\/(?:[^@/]+@)?(.+)$/.exec(url);
-  if (m) return `https://${m[1]}`;
+  if (m) return 'https://' + m[1];
   return null;
 }
 
@@ -119,19 +119,19 @@ const parseRef = ref => { const x = REF.exec(ref || ''); return x ? { repo: x[1]
 
 /* Never cite files that usually hold secrets, and never quote or link a line that looks like a credential. */
 const SECRET_FILE = /(^|\/)([^/]*\.(pem|key|p12|pfx|jks|keystore|kdbx)|id_(rsa|dsa|ecdsa|ed25519)|\.netrc|\.npmrc|\.pypirc|credentials(\.\w+)?|secrets?\.(ya?ml|json|properties|conf|env))$/i;
-const SECRET_KEY = '(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|auth[_-]?token|client[_-]?secret|private[_-]?key)';
+const SENSITIVE_WORDS = '(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|auth[_-]?token|client[_-]?secret|private[_-]?key)';
 const PLACEHOLDER = /^(?:null|none|nil|true|false|changeme|change-me|example|xxx+|\*+|<[^>]*>|your[-_ ].*|todo)$/i;
 // a type or a variable, not a value: String, Option[String], string, str, Secret, cfg.password, getPassword()
 const NOT_A_VALUE = /^(?:[A-Z][\w.]*(?:\[[^\]]*\]|<[^>]*>)?\??|string|str|int|bool|boolean|bytes|any|number|char\[\]|[a-z_][\w]*(?:\.[\w]+)+|[\w.]+\(.*\))$/;
 // key names that only mention a secret: PasswordResetPath, API_KEY_HEADER, passwordField, secretName
 const NAME_SUFFIX = /(?:path|url|uri|endpoint|route|name|field|header|param|label|placeholder|reset|hash|hasher|length|policy|regex|pattern|storage|file|env|var|id|type|prefix)s?$/i;
-const isName = (key, value) => NAME_SUFFIX.test(key.replace(/["']/g, '')) || new RegExp(SECRET_KEY, 'i').test(value);
+const isName = (key, value) => NAME_SUFFIX.test(key.replace(/["']/g, '')) || new RegExp(SENSITIVE_WORDS, 'i').test(value);
 function credentialAssignment(line) {
   // a quoted literal: password = "s3cret", "apiKey": "abc123", password: 'x9y8z7'
-  const q = new RegExp(`\\b([\\w.-]*${SECRET_KEY}[\\w.-]*)["']?\\s*[:=]\\s*["']([^"']{4,})["']`, 'i').exec(line);
+  const q = new RegExp(`\\b([\\w.-]*${SENSITIVE_WORDS}[\\w.-]*)["']?\\s*[:=]\\s*["']([^"']{4,})["']`, 'i').exec(line);
   if (q && !/^[$%{<]/.test(q[2]) && !PLACEHOLDER.test(q[2].trim()) && !isName(q[1], q[2])) return true;
   // an unquoted value on a key-value line (.properties, .env, YAML): DB_PASSWORD=hunter2, password: petclinic
-  const u = new RegExp(`^\\s*(?:export\\s+)?([\\w.-]*${SECRET_KEY}[\\w.-]*)\\s*[:=]\\s*([^\\s#"']{4,})\\s*(?:#.*)?$`, 'i').exec(line);
+  const u = new RegExp(`^\\s*(?:export\\s+)?([\\w.-]*${SENSITIVE_WORDS}[\\w.-]*)\\s*[:=]\\s*([^\\s#"']{4,})\\s*(?:#.*)?$`, 'i').exec(line);
   if (u) { const v = u[2].replace(/[,;)]+$/, ''); if (!/^[$%{<]/.test(v) && !PLACEHOLDER.test(v) && !NOT_A_VALUE.test(v) && !isName(u[1], v)) return true; }
   return false;
 }

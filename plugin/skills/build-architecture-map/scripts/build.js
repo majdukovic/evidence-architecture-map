@@ -221,7 +221,7 @@ if (m.facts.length) {
 }
 push('## Checking this document', '',
   `Every reference above is \`repo:path:line\` plus a quote from that line. To check them all against the repos' default branches:`, '',
-  '```bash', `node <kit>/skills/build-architecture-map/scripts/verify.js ${path.basename(m.dir)} --repos <folder with the repos>`, '```', '');
+  '```bash', `node <kit>/plugin/skills/build-architecture-map/scripts/verify.js ${path.basename(m.dir)} --repos <folder with the repos>`, '```', '');
 const mdFile = path.join(m.dir, out.markdown || 'ARCHITECTURE.md');
 fs.writeFileSync(mdFile, lines.join('\n'));
 

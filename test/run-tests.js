@@ -8,7 +8,7 @@ const os = require('os');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 
-const SCRIPTS = path.join(__dirname, '..', 'skills', 'build-architecture-map', 'scripts');
+const SCRIPTS = path.join(__dirname, '..', 'plugin', 'skills', 'build-architecture-map', 'scripts');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'archmap-test-'));
 const sh = (cwd, cmd, ...a) => execFileSync(cmd, a, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 const node = (...a) => spawnSync(process.execPath, a, { encoding: 'utf8' });

@@ -52,7 +52,7 @@ Then ask, for example: *"Build an architecture map of the repos in ~/code/acme f
 `/evidence-architecture-map:build-architecture-map`. To change an existing map, ask to update it, or run
 `/evidence-architecture-map:update-architecture-map`.
 
-**Claude Code without the plugin system:** copy `skills/build-architecture-map` and `skills/update-architecture-map`
+**Claude Code without the plugin system:** copy `plugin/skills/build-architecture-map` and `plugin/skills/update-architecture-map`
 into your project's `.claude/skills/` (or `~/.claude/skills/`).
 
 **Any other agent:** clone this repo and use a prompt from [`prompts/`](prompts):
@@ -60,6 +60,9 @@ into your project's `.claude/skills/` (or `~/.claude/skills/`).
 [`standalone.md`](prompts/standalone.md) when you cannot run the kit's scripts at all (Markdown output only).
 
 **Requirements:** git and Node.js 18 or newer. No npm packages. Optional: Playwright, for the UI audit.
+
+**Layout:** the plugin itself is the [`plugin/`](plugin) folder (manifest, skills, scripts). Everything else in this
+repo (examples, prompts, CI recipes, tests) is documentation and is not installed with the plugin.
 
 **Unattended runs** (`claude -p`, CI): give the scope answers in the prompt (see [`prompts/build-map.md`](prompts/build-map.md)),
 load the plugin with `--plugin-dir`, and allow the tools the skill needs, for example
@@ -71,10 +74,10 @@ load the plugin with `--plugin-dir`, and allow the tools the skill needs, for ex
 | Phase | What happens | Where it is defined |
 |---|---|---|
 | 0. Scope | The agent asks which repos, for whom, which flows matter, and which other sources it may read | `SKILL.md` |
-| 1. Discover | Reads each repo's default branch through git (never your working tree); collects hints | [`where-to-look.md`](skills/build-architecture-map/references/where-to-look.md), [`context-sources.md`](skills/build-architecture-map/references/context-sources.md) |
-| 2. Draft | Research agents write components, connections, flows and facts, each with evidence | [`research-brief.md`](skills/build-architecture-map/references/research-brief.md), [`evidence-rules.md`](skills/build-architecture-map/references/evidence-rules.md) |
-| 3. Verify | Neutral questions answered by agents that have not seen the draft; then an adversarial review | [`cove-brief.md`](skills/build-architecture-map/references/cove-brief.md), [`review-brief.md`](skills/build-architecture-map/references/review-brief.md) |
-| 4. Build and check | `build.js` validates the data and builds the page; `verify.js` checks every quote is still on its line | [`scripts/`](skills/build-architecture-map/scripts) |
+| 1. Discover | Reads each repo's default branch through git (never your working tree); collects hints | [`where-to-look.md`](plugin/skills/build-architecture-map/references/where-to-look.md), [`context-sources.md`](plugin/skills/build-architecture-map/references/context-sources.md) |
+| 2. Draft | Research agents write components, connections, flows and facts, each with evidence | [`research-brief.md`](plugin/skills/build-architecture-map/references/research-brief.md), [`evidence-rules.md`](plugin/skills/build-architecture-map/references/evidence-rules.md) |
+| 3. Verify | Neutral questions answered by agents that have not seen the draft; then an adversarial review | [`cove-brief.md`](plugin/skills/build-architecture-map/references/cove-brief.md), [`review-brief.md`](plugin/skills/build-architecture-map/references/review-brief.md) |
+| 4. Build and check | `build.js` validates the data and builds the page; `verify.js` checks every quote is still on its line | [`scripts/`](plugin/skills/build-architecture-map/scripts) |
 | 5. Keep it true | Re-run the check in CI; the update skill handles changes | [`examples/ci/`](examples/ci) |
 
 Evidence is `repo:path:line` plus an exact quote from that line:
@@ -103,7 +106,7 @@ Related links on the page are labelled as not evidence and are never checked.
 ## The scripts
 
 ```bash
-K=skills/build-architecture-map/scripts
+K=plugin/skills/build-architecture-map/scripts
 node $K/init.js docs/architecture-map --title "Acme Platform Map" --repos ~/code/acme   # new map folder
 node $K/show.js ~/code/acme/orders src/Main.scala 30 60 # a file from the default branch, numbered, for exact quotes
 node $K/merge.js docs/architecture-map draft-*.json     # combine research agents' drafts, report conflicts
@@ -122,7 +125,7 @@ cited line or the quoted line sits within two lines of a literal credential, so 
 declarations, `${ENV}` placeholders and field names such as `password: String` do not count. Right after `--pin`, every
 quote must be on its exact line; later, a quote that moved up to two lines is reported as a note.
 
-The data format is described in [`data-format.md`](skills/build-architecture-map/references/data-format.md).
+The data format is described in [`data-format.md`](plugin/skills/build-architecture-map/references/data-format.md).
 Components and connections that exist only in some setups (a profile, a flag, an optional add-on) carry a
 `condition` and are drawn dashed.
 
@@ -132,9 +135,8 @@ Components and connections that exist only in some setups (a profile, a flag, an
   never `checkout`, `pull` or `push`) and `node` for the bundled scripts. No hooks, no MCP servers, no package installs.
 - **Writes:** only the map folder you choose (JSON, `architecture.html`, `ARCHITECTURE.md`, `review/`).
 - **Network:** the scripts make no network calls, except `verify-ci.sh`, which clones the repos listed in `pins.json`
-  from your own git host. The generated `architecture.html` loads its fonts from Google Fonts (`fonts.googleapis.com`)
-  when someone opens it in a browser; without a connection it falls back to system fonts. `run-ui-audit.mjs` uses
-  Playwright, which you install yourself.
+  from your own git host. The generated `architecture.html` is self-contained and loads nothing from the internet.
+  `run-ui-audit.mjs` uses Playwright, which you install yourself.
 - **Other sources:** the skill reads docs, tickets, dashboards, chat or agent history only when you allow it, through
   tools you already have, and never copies their content onto the map.
 - **Personal data:** none is collected or sent anywhere. Evidence quotes are short excerpts of your code, and the build

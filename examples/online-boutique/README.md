@@ -1,7 +1,7 @@
 # Demo: Online Boutique
 
 A map of Google's [Online Boutique](https://github.com/GoogleCloudPlatform/microservices-demo) (microservices-demo),
-built with this kit by following `skills/build-architecture-map/SKILL.md` end to end.
+built with this kit by following `plugin/skills/build-architecture-map/SKILL.md` end to end.
 
 - `architecture.html`: the interactive page (download it and open it in a browser, or serve this folder).
 - `ARCHITECTURE.md`: the same content with Mermaid diagrams.
@@ -20,9 +20,9 @@ built with this kit by following `skills/build-architecture-map/SKILL.md` end to
 
 ```bash
 git clone --depth 1 https://github.com/GoogleCloudPlatform/microservices-demo .repos/microservices-demo
-node ../../skills/build-architecture-map/scripts/verify.js .            # against today's main: shows any drift
+node ../../plugin/skills/build-architecture-map/scripts/verify.js .            # against today's main: shows any drift
 git -C .repos/microservices-demo fetch --depth 1 origin "$(node -p 'require("./pins.json").repos["microservices-demo"].sha')"
-node ../../skills/build-architecture-map/scripts/verify.js . --at pinned   # against the commit it was built from
+node ../../plugin/skills/build-architecture-map/scripts/verify.js . --at pinned   # against the commit it was built from
 ```
 
 Quotes are short excerpts from microservices-demo, which is licensed under the Apache License 2.0.

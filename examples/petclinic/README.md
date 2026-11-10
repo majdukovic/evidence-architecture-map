@@ -32,7 +32,7 @@ Check it yourself:
 ```bash
 git clone --depth 1 https://github.com/spring-petclinic/spring-petclinic-microservices .repos/spring-petclinic-microservices
 git clone --depth 1 https://github.com/spring-petclinic/spring-petclinic-microservices-config .repos/spring-petclinic-microservices-config
-node ../../skills/build-architecture-map/scripts/verify.js .
+node ../../plugin/skills/build-architecture-map/scripts/verify.js .
 ```
 
 Both repos are Apache License 2.0; the map quotes short excerpts and links to them at fixed commits.

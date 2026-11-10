@@ -7,4 +7,4 @@ verify-architecture-map:
   script:
     - git config --global url."https://oauth2:${MAP_READ_TOKEN}@gitlab.com/".insteadOf "https://gitlab.com/"
     - git clone -q --depth 1 https://github.com/majdukovic/evidence-architecture-map tools/evidence-architecture-map
-    - bash tools/evidence-architecture-map/skills/build-architecture-map/scripts/verify-ci.sh docs/architecture-map
+    - bash tools/evidence-architecture-map/plugin/skills/build-architecture-map/scripts/verify-ci.sh docs/architecture-map
