@@ -21,4 +21,5 @@ const mapFile = path.join(dir, 'map.json'), map = JSON.parse(fs.readFileSync(map
 if (opt('--title') && map.title === 'System Map') map.title = opt('--title');
 if (opt('--repos') && map.reposDir === '..') map.reposDir = path.relative(path.resolve(dir), path.resolve(opt('--repos'))) || '.';
 fs.writeFileSync(mapFile, JSON.stringify(map, null, 2) + '\n');
-console.log(`\nNext: fill components.json, connections.json and flows.json, then run\n  node ${path.relative(process.cwd(), path.join(__dirname, 'build.js'))} ${dir} --pin --verify`);
+const rel = path.relative(process.cwd(), path.join(__dirname, 'build.js'));
+console.log(`\nNext: fill components.json, connections.json and flows.json, then run\n  node ${rel.startsWith('..') ? path.join(__dirname, 'build.js') : rel} ${dir} --pin --verify`);

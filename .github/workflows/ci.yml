@@ -1,0 +1,45 @@
+# Checks the kit itself. The verify-demo job follows examples/ci/github-actions.yml step by step,
+# with the built-in GITHUB_TOKEN in place of MAP_READ_TOKEN (the demo's repo is public).
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Kit tests
+        run: node test/run-tests.js
+      - name: Plugin manifest is valid JSON
+        run: node -e 'for (const f of [".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"]) JSON.parse(require("fs").readFileSync(f))'
+  verify-demo:
+    runs-on: ubuntu-latest
+    env:
+      MAP_DIR: examples/online-boutique
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { repository: majdukovic/evidence-architecture-map, path: tools/evidence-architecture-map }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Let git read the cited repos
+        run: git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+      - name: Check every evidence reference
+        run: bash tools/evidence-architecture-map/skills/build-architecture-map/scripts/verify-ci.sh "$MAP_DIR"
+  ui-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Install Playwright
+        run: npm i --no-save playwright@1.60.0 && npx playwright install --with-deps chromium
+      - name: Click through every component and flow step of the demo
+        run: node skills/build-architecture-map/scripts/run-ui-audit.mjs examples/online-boutique
