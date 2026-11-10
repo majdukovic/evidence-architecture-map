@@ -1,4 +1,5 @@
 # evidence-architecture-map
+[![ci](https://github.com/majdukovic/evidence-architecture-map/actions/workflows/ci.yml/badge.svg)](https://github.com/majdukovic/evidence-architecture-map/actions/workflows/ci.yml)
 
 Architecture maps that newcomers can trust. **Every component, connection, flow step and fact on the map links to
 the line of code that proves it**, and a script re-checks every link against your repos.
