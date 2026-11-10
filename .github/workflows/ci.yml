@@ -18,7 +18,7 @@ jobs:
       - name: Kit tests
         run: node test/run-tests.js
       - name: Plugin manifest is valid JSON
-        run: node -e 'for (const f of [".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"]) JSON.parse(require("fs").readFileSync(f))'
+        run: node -e 'for (const f of ["plugin/.claude-plugin/plugin.json", ".claude-plugin/marketplace.json"]) JSON.parse(require("fs").readFileSync(f))'
   verify-demo:
     runs-on: ubuntu-latest
     env:
