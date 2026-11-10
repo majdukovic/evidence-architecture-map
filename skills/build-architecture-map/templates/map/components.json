@@ -1,0 +1,10 @@
+{
+  "layers": [
+    { "id": "people", "label": "People and client apps" },
+    { "id": "entry", "label": "Entry points" },
+    { "id": "services", "label": "Services" },
+    { "id": "data", "label": "Data stores and messaging" },
+    { "id": "external", "label": "Third-party systems" }
+  ],
+  "components": []
+}

@@ -1,0 +1,11 @@
+{
+  "name": "evidence-architecture-map",
+  "owner": { "name": "Mate Ajduković" },
+  "plugins": [
+    {
+      "name": "evidence-architecture-map",
+      "source": "./",
+      "description": "Evidence-grounded architecture maps: every claim links to the line of code that proves it."
+    }
+  ]
+}

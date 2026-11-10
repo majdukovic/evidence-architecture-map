@@ -1,0 +1,12 @@
+<h2>How to read this map</h2>
+<p>This page describes how the main components of the system fit together and how they talk to each other. Every component, connection and flow step has evidence: a link to the line of code that supports it, plus a short quote from that line. The date in the header is when the code was last checked.</p>
+<p>When the code could not confirm something, it was left out. The map is deliberately smaller than the system: it covers what a newcomer needs, not every class or job.</p>
+
+<h3>Reading a flow</h3>
+<div class="legend-row"><svg width="46" height="12" aria-hidden="true"><line x1="2" y1="6" x2="40" y2="6" style="stroke:var(--back);stroke-width:2"/><path d="M38,2 L44,6 L38,10z" style="fill:var(--back)"/></svg><span><b>Request</b>: a call that waits for an answer (HTTP, gRPC, SQL and so on).</span></div>
+<div class="legend-row"><svg width="46" height="12" aria-hidden="true"><line x1="2" y1="6" x2="40" y2="6" style="stroke:var(--lay);stroke-width:2;stroke-dasharray:5 3"/><path d="M38,2 L44,6 L38,10z" style="fill:var(--lay)"/></svg><span><b>Response</b>: the answer to an earlier request.</span></div>
+<div class="legend-row"><svg width="46" height="12" aria-hidden="true"><line x1="2" y1="6" x2="40" y2="6" style="stroke:var(--async);stroke-width:2;stroke-dasharray:2 3"/><path d="M38,2 L44,6 L38,10z" style="fill:var(--async)"/></svg><span><b>Async</b>: a message on a queue or topic, or a call nobody waits for.</span></div>
+<p>Use the arrow keys to move between steps. Payload examples use the real field names from the code, with made-up values; <code>...</code> marks fields left out, and secrets are shown as placeholders such as <code>&lt;token&gt;</code>. A <b>Full definition</b> link opens the class, schema or proto that defines the payload.</p>
+
+<h3>Links you can share</h3>
+<p>Every component, flow and step has its own address. Use <b>Copy link</b>, or the address bar: <code>#node.&lt;id&gt;</code> opens a component, <code>#flow.&lt;id&gt;.&lt;step&gt;</code> opens a flow step and <code>#mapflow.&lt;id&gt;</code> shows a flow on the map.</p>

@@ -1,0 +1,10 @@
+{
+  "name": "evidence-architecture-map",
+  "version": "0.1.0",
+  "description": "Build architecture maps of your system where every component, connection and flow step links to the line of code that proves it. Chain-of-Verification with independent agents, a mechanical quote checker, an interactive page and ARCHITECTURE.md. Any language, any git host.",
+  "author": { "name": "Mate Ajduković" },
+  "homepage": "https://github.com/majdukovic/evidence-architecture-map",
+  "repository": "https://github.com/majdukovic/evidence-architecture-map",
+  "license": "MIT",
+  "keywords": ["architecture", "documentation", "onboarding", "chain-of-verification", "evidence", "diagrams"]
+}

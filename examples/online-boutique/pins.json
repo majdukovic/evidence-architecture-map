@@ -1,0 +1,10 @@
+{
+  "verifiedOn": "2026-11-10",
+  "repos": {
+    "microservices-demo": {
+      "branch": "main",
+      "sha": "c7cb6d5bfd6ea3aed768634ebbcb98cb7a523712",
+      "web": "https://github.com/GoogleCloudPlatform/microservices-demo"
+    }
+  }
+}

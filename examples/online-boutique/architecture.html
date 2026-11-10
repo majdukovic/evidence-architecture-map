@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Online Boutique Map</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230f6b5c'/%3E%3Cpath d='M4 4h8M4 8h8M4 12h8' stroke='white' stroke-width='1.6'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one-line header with tabs; Map = search + layer filter over a width-fitted layered SVG, with a side card
+   (a bottom sheet on phones); Flows = grouped flow list, header grid, fitted sequence lanes over a request/response inspector. */
+:root {
+  --bg: #f4f6f8; --surface: #ffffff; --surface-2: #e9edf2; --line: #d3dae3;
+  --fg: #16202c; --fg-dim: #556373; --accent: #0f6b5c;
+  --back: #1d5fa8; --back-soft: #dcecfb; --lay: #a8326a; --lay-soft: #fbe3ee;
+  --async: #6e5510; --async-soft: #f6edcf; --note: #556373;
+  --ok: #1f7a43; --warn: #9a6400; --shadow: 0 10px 30px rgba(22, 32, 44, 0.18);
+  --font-display: 'Archivo', 'Arial Narrow', system-ui, sans-serif;
+  --font-body: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e141b; --surface: #151d27; --surface-2: #1d2733; --line: #2b3746;
+  --fg: #e3e9f0; --fg-dim: #94a3b4; --accent: #4cc3a9;
+  --back: #6aaef0; --back-soft: #16304a; --lay: #ee7fae; --lay-soft: #42182c;
+  --async: #e2c25e; --async-soft: #3a3115; --note: #94a3b4;
+  --ok: #5fd08f; --warn: #e5b04c; --shadow: 0 10px 30px rgba(0, 0, 0, 0.55); color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0e141b; --surface: #151d27; --surface-2: #1d2733; --line: #2b3746;
+  --fg: #e3e9f0; --fg-dim: #94a3b4; --accent: #4cc3a9;
+  --back: #6aaef0; --back-soft: #16304a; --lay: #ee7fae; --lay-soft: #42182c;
+  --async: #e2c25e; --async-soft: #3a3115; --note: #94a3b4;
+  --ok: #5fd08f; --warn: #e5b04c; --shadow: 0 10px 30px rgba(0, 0, 0, 0.55); color-scheme: dark; }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+html { font-size: clamp(15px, 0.35vw + 11px, 19px); } /* 15px phones, 16px at 1440, ~17.7px at 1920, 19px on 2560+ */
+body { margin: 0; background: var(--bg); color: var(--fg); font: 1rem/1.5 var(--font-body); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code, .mono { font-family: var(--font-mono); font-size: 0.86em; }
+a { color: var(--accent); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: 8px; top: -40px; z-index: 50; background: var(--surface); padding: 6px 10px; border-radius: 6px; box-shadow: var(--shadow); }
+.skip:focus { top: 8px; }
+
+.app { display: flex; flex-direction: column; height: 100%; }
+
+/* ---------- header ---------- */
+.topbar { display: grid; grid-template-columns: auto 1fr auto; grid-template-areas: "brand tabs theme"; align-items: center; gap: 8px 16px;
+  padding: 8px 16px; padding-top: calc(8px + env(safe-area-inset-top, 0px)); background: var(--surface); border-bottom: 1px solid var(--line); }
+.brand { grid-area: brand; display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.brand h1 { margin: 0; font: 800 1.2667rem/1.1 var(--font-display); white-space: nowrap; }
+.verified { font-size: 0.8rem; color: var(--fg-dim); white-space: nowrap; }
+.verified b { color: var(--ok); font-weight: 600; }
+.tabs { grid-area: tabs; display: flex; gap: 2px; justify-content: flex-end; overflow-x: auto; scrollbar-width: none; min-width: 0; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab { border: 1px solid transparent; background: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; color: var(--fg-dim); font-weight: 600; white-space: nowrap; }
+.tab:hover { color: var(--fg); background: var(--surface-2); }
+.tab[aria-selected="true"] { color: var(--fg); border-color: var(--line); background: var(--bg); }
+.themebtn { grid-area: theme; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 5px 10px; cursor: pointer; color: var(--fg); font-size: 0.8667rem; line-height: 1.3; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { background: var(--surface-2); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); font-weight: 600; }
+.btn.ghost { border-color: transparent; background: none; color: var(--fg-dim); }
+.btn.ghost:hover { color: var(--fg); background: var(--surface-2); }
+
+.view { flex: 1; min-height: 0; display: none; }
+.view.active { display: flex; }
+
+/* ---------- map ---------- */
+#view-map { flex-direction: row; }
+.map-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.map-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.combo { position: relative; flex: 0 1 300px; min-width: 200px; }
+.combo input { width: 100%; padding: 7px 10px 7px 30px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.combo svg.mag { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; stroke: var(--fg-dim); fill: none; pointer-events: none; }
+.combo ul { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); max-height: 320px; overflow-y: auto; }
+.combo li { padding: 6px 8px; border-radius: 5px; cursor: pointer; display: flex; gap: 8px; align-items: baseline; }
+.combo li[aria-selected="true"], .combo li:hover { background: var(--surface-2); }
+.combo li .sw { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; transform: translateY(1px); }
+.combo li small { color: var(--fg-dim); }
+.chips { display: flex; gap: 6px; flex: 1 1 400px; min-width: 0; flex-wrap: wrap; align-items: center; }
+.chips-label { font: 700 0.7rem var(--font-display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-dim); margin-right: 2px; }
+.chip { border: 1px solid var(--line); background: var(--surface); padding: 3px 10px; border-radius: 999px; cursor: pointer; font-size: 0.8333rem; display: inline-flex; align-items: center; gap: 6px; color: var(--fg-dim); white-space: nowrap; }
+.chip .sw { width: 9px; height: 9px; border-radius: 2px; }
+.chip[aria-pressed="true"] { color: var(--fg); border-color: var(--fg-dim); }
+.chip[aria-pressed="false"] { text-decoration: line-through; opacity: 0.7; }
+.map-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
+.map-hint { padding: 6px 16px 0; font-size: 0.8333rem; color: var(--fg-dim); }
+svg text { fill: var(--fg); font-family: var(--font-body); }
+.layer-label { font: 700 0.7rem var(--font-display); letter-spacing: 0.12em; text-transform: uppercase; fill: var(--fg-dim); }
+.layer-band { fill: var(--surface); stroke: var(--line); }
+.node rect.box { fill: var(--surface); stroke-width: 1.5; }
+.node { cursor: pointer; outline: none; }
+.node text.nl { font-weight: 600; font-size: 0.8333rem; }
+.node text.ns { font-size: 0.7rem; fill: var(--fg-dim); }
+.node.dim { opacity: 0.22; }
+.node.sel rect.box { stroke-width: 3; }
+.node:focus-visible rect.box { stroke: var(--accent); stroke-width: 3; }
+.node:hover rect.box { fill: var(--surface-2); }
+.edge { fill: none; stroke: var(--fg-dim); stroke-width: 1; opacity: 0.09; transition: opacity .15s; }
+.edge.hi { opacity: 0.85; stroke-width: 1.8; }
+.edge.out.hi { stroke: var(--back); }
+.edge.in.hi { stroke: var(--lay); }
+.edge.dim { opacity: 0.03; }
+.edge.focus { opacity: 1; stroke-width: 3.2; }
+.edge.fp { stroke: var(--accent); opacity: 0.95; stroke-width: 2.4; }
+.badge circle { fill: var(--accent); }
+.badge text { fill: var(--surface); font-weight: 700; text-anchor: middle; }
+.flowbanner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 16px; background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: 0.9rem; }
+.flowbanner b { font-family: var(--font-display); }
+.flowbanner .note { flex: 1 1 260px; }
+.stepslist { list-style: none; margin: 8px 0 0; padding: 0; counter-reset: s; display: grid; gap: 2px; }
+.stepslist button { width: 100%; display: grid; grid-template-columns: 2em 1fr; gap: 0 6px; text-align: left; border: 0; background: none; padding: 6px 6px; border-radius: 6px; cursor: pointer; }
+.stepslist button:hover { background: var(--surface-2); }
+.stepslist .n { font: 600 0.75rem var(--font-mono); color: var(--fg-dim); padding-top: 2px; }
+.stepslist .l { font-weight: 600; }
+.stepslist .h { grid-column: 2; font-size: 0.8rem; color: var(--fg-dim); }
+.qa { display: grid; gap: 8px; }
+.qa .it { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: baseline; }
+.qa .k { font: 600 0.7rem var(--font-mono); text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--ok); }
+.qa .nm { font-family: var(--font-mono); font-size: 0.85rem; font-weight: 600; word-break: break-all; }
+.qa .nt { grid-column: 2; font-size: 0.82rem; color: var(--fg-dim); }
+.qa .ev { grid-column: 2; margin: 0; }
+
+.side { width: var(--side-w, 26rem); flex-shrink: 0; border-left: 1px solid var(--line); background: var(--surface); overflow-y: auto; padding: 18px 18px 40px; }
+.side-head { display: flex; align-items: flex-start; gap: 8px; }
+.side-head > div { flex: 1; min-width: 0; }
+.side h2 { font: 800 1.4rem/1.15 var(--font-display); margin: 0 0 4px; text-wrap: balance; }
+.side .meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 0.8333rem; color: var(--fg-dim); }
+.layerpill { display: inline-flex; align-items: center; gap: 5px; }
+.layerpill .sw { width: 9px; height: 9px; border-radius: 2px; }
+.side p { margin: 10px 0; }
+.sheet-close { display: none; }
+.sec-t { font: 700 0.7rem var(--font-display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-dim); margin: 18px 0 6px; }
+.rel { display: grid; grid-template-columns: auto 1fr; gap: 0 10px; font-size: 0.9rem; align-items: baseline; }
+.rel .row { display: contents; }
+.rel .p { font-family: var(--font-mono); font-size: 0.7333rem; padding: 1px 6px; border-radius: 4px; white-space: nowrap; margin-top: 4px; }
+.rel .p.out { background: var(--back-soft); color: var(--back); }
+.rel .p.in { background: var(--lay-soft); color: var(--lay); }
+.rel button.lnk { background: none; border: 0; padding: 4px 0 0; cursor: pointer; color: var(--accent); font-weight: 600; text-align: left; }
+.rel button.lnk:hover { text-decoration: underline; }
+.rel .why { color: var(--fg-dim); font-size: 0.8333rem; grid-column: 2; }
+.tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag { font-size: 0.7667rem; padding: 1px 7px; border-radius: 4px; background: var(--surface-2); color: var(--fg-dim); font-family: var(--font-mono); }
+.links { margin: 4px 0 0; padding-left: 18px; }
+.links li { margin: 2px 0; }
+.facts { padding-left: 18px; }
+.facts li { margin: 0 0 12px; }
+.callout { border-left: 3px solid var(--warn); background: var(--surface-2); padding: 8px 12px; border-radius: 0 6px 6px 0; font-size: 0.9rem; margin: 10px 0; }
+.note { font-size: 0.8667rem; color: var(--fg-dim); }
+details.conn summary { cursor: pointer; }
+details.conn .c { margin-top: 10px; font-size: 0.8333rem; }
+
+.ev { font-size: 0.8rem; margin: 6px 0; }
+.ev a { font-family: var(--font-mono); font-size: 0.7667rem; word-break: break-all; text-decoration: none; }
+.ev a:hover { text-decoration: underline; }
+.ev a .repo { color: var(--fg-dim); }
+.ev q { display: block; quotes: none; font-family: var(--font-mono); font-size: 0.7667rem; color: var(--fg-dim); background: var(--surface-2); padding: 4px 8px; border-radius: 4px; margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
+
+.intro h2 { color: var(--fg); }
+
+/* ---------- flows ---------- */
+#view-flows { flex-direction: row; }
+.flowlist { width: var(--list-w, 16.5rem); flex-shrink: 0; border-right: 1px solid var(--line); background: var(--surface); overflow-y: auto; padding: 8px 10px 20px; }
+.fl-group { font: 700 0.7rem var(--font-display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-dim); margin: 12px 10px 4px; }
+.flowlist button { display: grid; grid-template-columns: 22px 1fr; column-gap: 6px; width: 100%; text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+.flowlist button:hover { background: var(--surface-2); }
+.flowlist button[aria-current="true"] { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
+.flowlist .num { grid-row: span 2; font: 700 0.7333rem var(--font-mono); color: var(--fg-dim); padding-top: 2px; }
+.flowlist .ft { font-weight: 600; }
+.flowlist .fs { font-size: 0.8333rem; color: var(--fg-dim); line-height: 1.35; }
+.flowpick { display: none; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.flowpick select { width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.flow-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.flow-head { padding: 12px 18px; background: var(--surface); border-bottom: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; align-items: center; }
+.flow-head h2 { margin: 0; font: 800 1.3333rem/1.2 var(--font-display); text-wrap: balance; }
+.ctrls { display: flex; gap: 6px; align-items: center; }
+.ctrls .pos { font-variant-numeric: tabular-nums; font-size: 0.8667rem; color: var(--fg-dim); min-width: 56px; text-align: center; }
+.flow-head .sum { grid-column: 1 / -1; margin: 0; color: var(--fg-dim); font-size: 0.9333rem; max-width: 95ch; }
+.tests { grid-column: 1 / -1; display: grid; gap: 4px; font-size: 0.8667rem; padding: 8px 10px; background: var(--surface-2); border-radius: 6px; min-width: 0; }
+.tests-t { font: 700 0.7rem var(--font-display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ok); }
+.test { display: grid; gap: 1px; min-width: 0; }
+.test a { word-break: break-all; }
+.test span { color: var(--fg-dim); }
+.flow-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, var(--seq-w, 1.15fr)) auto minmax(0, 1fr); }
+/* draggable dividers */
+.splitter { flex: 0 0 auto; width: 8px; margin: 0 -4px; position: relative; z-index: 5; cursor: col-resize; touch-action: none; background: none; outline: none; }
+.splitter::before { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background .15s; }
+.splitter::after { content: ''; position: absolute; top: 50%; left: 1px; width: 6px; height: 36px; transform: translateY(-50%); border-radius: 3px; background: var(--line); }
+.splitter:hover::before, .splitter:focus-visible::before, .splitter.dragging::before { background: var(--accent); }
+.splitter:hover::after, .splitter:focus-visible::after, .splitter.dragging::after { background: var(--accent); }
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing iframe, body.resizing svg { pointer-events: none; }
+.seq-wrap { overflow: auto; border-right: 1px solid var(--line); }
+.seq-row { cursor: pointer; outline: none; }
+.seq-row .rowbg { fill: transparent; }
+.seq-row:hover .rowbg { fill: var(--surface-2); }
+.seq-row:focus-visible .rowbg { fill: var(--surface-2); stroke: var(--accent); stroke-width: 2; }
+.seq-row.cur .rowbg { fill: var(--back-soft); }
+.seq-row.cur.res .rowbg { fill: var(--lay-soft); }
+.seq-row.cur.async .rowbg { fill: var(--async-soft); }
+.seq-num { font: 600 0.6667rem var(--font-mono); fill: var(--fg-dim); }
+.seq-lbl { font-size: 0.7667rem; }
+.seq-actor rect { fill: var(--surface); stroke: var(--line); }
+.seq-actor text { font-weight: 700; font-size: 0.7667rem; }
+.lifeline { stroke: var(--line); stroke-dasharray: 3 4; }
+.arr-req { stroke: var(--back); fill: none; stroke-width: 1.6; }
+.arr-res { stroke: var(--lay); fill: none; stroke-width: 1.6; stroke-dasharray: 5 3; }
+.arr-async { stroke: var(--async); fill: none; stroke-width: 1.6; stroke-dasharray: 2 3; }
+.arr-self { stroke: var(--note); fill: none; stroke-width: 1.4; }
+.inspector { overflow-y: auto; padding: 16px 18px 40px; background: var(--surface); }
+.step-kind { display: inline-flex; align-items: center; gap: 6px; font: 700 0.7rem var(--font-display); letter-spacing: 0.1em; text-transform: uppercase; padding: 2px 8px; border-radius: 4px; }
+.k-req { background: var(--back-soft); color: var(--back); }
+.k-res { background: var(--lay-soft); color: var(--lay); }
+.k-async { background: var(--async-soft); color: var(--async); }
+.k-self { background: var(--surface-2); color: var(--note); }
+.inspector h3 { font: 700 1.2rem/1.25 var(--font-display); margin: 8px 0 2px; text-wrap: balance; word-break: break-word; }
+.hop { font-size: 0.8667rem; color: var(--fg-dim); }
+.hop b { color: var(--fg); }
+.callline { font-family: var(--font-mono); font-size: 0.8333rem; background: var(--surface-2); padding: 6px 10px; border-radius: 6px; margin: 12px 0 4px; word-break: break-all; }
+.callline .verb { font-weight: 600; color: var(--back); margin-right: 6px; }
+.payloads { display: grid; gap: 10px; margin-top: 10px; }
+.pl { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; min-width: 0; }
+.pl-h { display: flex; align-items: center; justify-content: space-between; padding: 5px 10px; font: 700 0.7rem var(--font-display); letter-spacing: 0.1em; text-transform: uppercase; }
+.pl.req .pl-h { background: var(--back-soft); color: var(--back); }
+.pl.res .pl-h { background: var(--lay-soft); color: var(--lay); }
+.pl pre { margin: 0; padding: 10px 12px; overflow-x: auto; font: 0.8rem/1.5 var(--font-mono); background: var(--surface); }
+.pl-h .acts { display: inline-flex; gap: 8px; align-items: center; }
+.pl-h .trim { font: 600 0.7rem var(--font-body); letter-spacing: 0; text-transform: none; opacity: 0.85; }
+.pl-h a.def { font: 600 0.73rem var(--font-body); letter-spacing: 0; text-transform: none; color: inherit; }
+.pl .copy { font: 600 0.7333rem var(--font-body); letter-spacing: 0; text-transform: none; border: 1px solid currentColor; background: none; border-radius: 4px; padding: 0 6px; cursor: pointer; color: inherit; }
+.j-k { color: var(--back); } .j-s { color: var(--ok); } .j-n { color: var(--lay); } .j-c { color: var(--fg-dim); font-style: italic; }
+.unv { font-size: 0.8333rem; color: var(--fg-dim); font-style: italic; }
+.stepnav { display: flex; justify-content: space-between; gap: 8px; margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); }
+.stepnav .btn { max-width: 48%; text-align: left; }
+.stepnav .btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- components ---------- */
+#view-components { flex-direction: column; overflow-y: auto; }
+.comp-wrap { padding: 16px clamp(16px, 2vw, 40px); width: 100%; }
+.comp-tools { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.comp-tools input, .comp-tools select { padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.comp-tools input { flex: 1 1 280px; max-width: 420px; }
+.comp-count { font-size: 0.8667rem; color: var(--fg-dim); }
+.tbl-wrap { overflow-x: auto; margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.9333rem; }
+th { text-align: left; font: 700 0.7rem var(--font-display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg-dim); padding: 10px 12px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); }
+td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tbody tr { cursor: pointer; outline: none; }
+tbody tr:hover td, tbody tr:focus-visible td { background: var(--surface-2); }
+td .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+td .lay { display: block; font-size: 0.8rem; color: var(--fg-dim); }
+.empty { padding: 20px; color: var(--fg-dim); }
+
+/* ---------- about ---------- */
+#view-about { overflow-y: auto; }
+.prose { /* fluid type: 15px on phones, ~17px at 1440px, up to 22px on large monitors */
+  flex: 1 1 auto; min-width: 0;
+  font-size: clamp(15px, 0.55vw + 9px, 22px); line-height: 1.65; padding-block: clamp(20px, 2.5vw, 48px) 72px; padding-inline: clamp(16px, 3vw, 56px); }
+.about-layout { display: grid; grid-template-columns: minmax(12em, 15em) minmax(0, 1fr); gap: clamp(20px, 3vw, 56px); align-items: start; }
+.about-toc { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 2px; font-size: 0.85em; border-left: 2px solid var(--line); padding-left: 2px; }
+.about-toc .toc-t { font: 700 0.75em var(--font-display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-dim); padding: 0 10px 6px; }
+.about-toc button { text-align: left; background: none; border: 0; padding: 5px 10px; border-radius: 0 6px 6px 0; cursor: pointer; color: var(--fg-dim); line-height: 1.3; }
+.about-toc button:hover, .about-toc button[aria-current="true"] { color: var(--fg); background: var(--surface-2); box-shadow: inset 2px 0 0 var(--accent); }
+.about-intro { max-width: 80ch; }
+.about-intro p { font-size: 1.05em; }
+.about-main { container-type: inline-size; min-width: 0; }
+@container (max-width: 54em) { .about-secs { max-width: 72ch; } } /* one column only: keep the line length readable */
+.about-secs { column-width: 26em; column-gap: clamp(20px, 2.5vw, 48px); }
+.about-sec { break-inside: avoid; display: inline-block; width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 0.4em 1.3em 0.8em; margin: 0 0 clamp(16px, 2vw, 32px); }
+.prose p, .prose li { margin: 0.6em 0; }
+.prose ul { padding-left: 1.3em; }
+.prose h2 { font: 800 clamp(24px, 1.1vw + 12px, 38px)/1.2 var(--font-display); text-wrap: balance; margin: 0 0 0.5em; }
+.prose h3 { font: 700 clamp(17px, 0.6vw + 10px, 25px)/1.3 var(--font-display); margin: 0.8em 0 0.3em; scroll-margin-top: 12px; text-wrap: balance; }
+.prose code { font-size: 0.85em; }
+.prose .legend-row { gap: 0.7em; }
+.legend-row { gap: 0.7em; }
+.toc { display: flex; flex-wrap: wrap; gap: 6px; margin: 0.4em 0 0.6em; }
+.toc .btn { font-size: clamp(13px, 0.3vw + 9px, 15px); }
+.legend-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.legend-row svg { flex-shrink: 0; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1000px) {
+  .splitter { display: none; }
+  #view-map { flex-direction: column; }
+  .side { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; width: auto; max-height: 72vh; border-left: 0; border-top: 1px solid var(--line);
+    border-radius: 14px 14px 0 0; box-shadow: var(--shadow); padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)); transform: translateY(105%); transition: transform .2s ease; }
+  .side.open { transform: none; }
+  .sheet-close { display: inline-flex; }
+  #view-flows { flex-direction: column; }
+  .flowlist { display: none; }
+  .flowpick { display: block; }
+  .flow-main { overflow-y: auto; }
+  .flow-body { display: block; flex: none; }
+  .seq-wrap { border-right: 0; border-bottom: 1px solid var(--line); max-height: 48vh; }
+  .inspector { overflow: visible; scroll-margin-top: 0; }
+}
+@media (max-width: 900px) {
+  .about-layout { grid-template-columns: 1fr; }
+  .about-toc { position: static; flex-direction: row; flex-wrap: wrap; border-left: 0; gap: 6px; }
+  .about-toc .toc-t { width: 100%; padding: 0; }
+  .about-toc button { border: 1px solid var(--line); border-radius: 6px; }
+}
+@media (max-width: 700px) {
+  .topbar { grid-template-columns: 1fr auto; grid-template-areas: "brand theme" "tabs tabs"; padding-bottom: 4px; }
+  .brand { flex-direction: column; gap: 0; }
+  .tabs { justify-content: flex-start; }
+  .tab { padding: 5px 8px; font-size: 0.9333rem; }
+  .map-tools { padding: 8px 12px; }
+  .combo { flex: 1 1 100%; }
+  .chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+  .flow-head { grid-template-columns: 1fr; }
+  .ctrls { justify-content: space-between; }
+  thead { display: none; }
+  table, tbody, tr, td { display: block; }
+  tr { border-bottom: 1px solid var(--line); padding: 6px 0; }
+  td { border: 0; padding: 3px 12px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main" id="skipLink">Skip to content</a>
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><h1 id="mapTitle"></h1><span class="verified" id="verified"></span></div>
+    <nav class="tabs" role="tablist" aria-label="Views">
+      <button class="tab" role="tab" data-view="map" id="tab-map" aria-controls="view-map">Map</button>
+      <button class="tab" role="tab" data-view="flows" id="tab-flows" aria-controls="view-flows">Flows</button>
+      <button class="tab" role="tab" data-view="components" id="tab-components" aria-controls="view-components">Components</button>
+      <button class="tab" role="tab" data-view="about" id="tab-about" aria-controls="view-about">How to read this</button>
+    </nav>
+    <button class="btn themebtn" id="themeBtn" type="button"></button>
+  </header>
+  <div class="sr-only" aria-live="polite" id="live"></div>
+
+  <main id="main" tabindex="-1" style="flex:1;min-height:0;display:flex;flex-direction:column">
+  <section class="view" id="view-map" role="tabpanel" aria-labelledby="tab-map">
+    <div class="map-main">
+      <div class="map-tools">
+        <div class="combo">
+          <svg class="mag" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke-width="1.6"/><path d="M11 11l4 4" stroke-width="1.6"/></svg>
+          <input id="mapSearch" type="search" role="combobox" aria-expanded="false" aria-controls="mapResults" aria-autocomplete="list" autocomplete="off" placeholder="Find a component (press /)" aria-label="Find a component">
+          <ul id="mapResults" role="listbox" hidden></ul>
+        </div>
+        <div class="chips" id="chips" role="group" aria-label="Show or hide layers"></div>
+      </div>
+      <div class="flowbanner" id="flowBanner" hidden></div>
+      <div class="map-scroll" id="mapScroll">
+        <div class="map-hint" id="mapHint">Select a box to see what it does and what it talks to. Blue arrows go out, pink arrows come in.</div>
+        <svg id="mapSvg" role="group" aria-label="Platform map: components grouped by layer"></svg>
+      </div>
+    </div>
+    <div class="splitter" id="splitMap" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize map and details panel" title="Drag to resize. Double-click to reset."></div>
+    <aside class="side" id="side" aria-label="Component details"></aside>
+  </section>
+
+  <section class="view" id="view-flows" role="tabpanel" aria-labelledby="tab-flows">
+    <nav class="flowlist" id="flowlist" aria-label="Flows"></nav>
+    <div class="splitter" id="splitList" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize flow list" title="Drag to resize. Double-click to reset."></div>
+    <div class="flow-main">
+      <div class="flowpick"><label class="sr-only" for="flowSelect">Choose a flow</label><select id="flowSelect"></select></div>
+      <div class="flow-head" id="flowHead"></div>
+      <div class="flow-body">
+        <div class="seq-wrap" id="seqWrap"><svg id="seqSvg" role="group" aria-label="Sequence diagram, one row per step"></svg></div>
+        <div class="splitter" id="splitSeq" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize sequence diagram and step details" title="Drag to resize. Double-click to reset."></div>
+        <div class="inspector" id="inspector" aria-label="Step details"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-components" role="tabpanel" aria-labelledby="tab-components">
+    <div class="comp-wrap">
+      <div class="comp-tools">
+        <input id="compSearch" type="search" placeholder="Filter by name, repo, purpose or protocol" aria-label="Filter components">
+        <select id="compLayer" aria-label="Filter by layer"></select>
+        <span class="comp-count" id="compCount" aria-live="polite"></span>
+      </div>
+      <div class="tbl-wrap"><table><thead><tr><th>Component</th><th>Repo</th><th>What it does</th><th>Exposes</th><th>Stores data in</th></tr></thead><tbody id="compBody"></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-about" role="tabpanel" aria-labelledby="tab-about"><div class="prose" id="about"></div></section>
+  </main>
+</div>
+
+<script id="map-data">
+/* Generated by build.js from online-boutique/. Do not edit. */
+window.ARCHMAP = {"meta":{"title":"Online Boutique Map","key":"online-boutique-map","verifiedOn":"2026-11-10","refCount":411,"repos":{"microservices-demo":{"file":"https://github.com/GoogleCloudPlatform/microservices-demo/blob/c7cb6d5bfd6ea3aed768634ebbcb98cb7a523712/{path}#L{line}","tree":"https://github.com/GoogleCloudPlatform/microservices-demo/tree/c7cb6d5bfd6ea3aed768634ebbcb98cb7a523712","sha":"c7cb6d5bfd6ea3aed768634ebbcb98cb7a523712","branch":"main"}}},"layers":[{"id":"clients","label":"Clients","color":"#2f7fd1"},{"id":"entry","label":"Entry point","color":"#c8457f"},{"id":"services","label":"Backend services","color":"#1f9d7a"},{"id":"data","label":"Data stores","color":"#b8901a"},{"id":"external","label":"External services","color":"#7b61c9"}],"nodes":[{"id":"frontend","label":"Frontend","short":"Web shop (Go BFF)","layer":"entry","repo":"microservices-demo","gateway":true,"purpose":"Go web server that renders the shop's HTML pages. Every page handler calls the backend services over gRPC and stitches the results together; it also proxies the chat box to the \u003cb>Shopping assistant\u003c/b> over HTTP.","callout":"The shopper's identity is just a random UUID in the \u003ccode>shop_session-id\u003c/code> cookie; it is passed to backends as \u003ccode>user_id\u003c/code>.","exposes":["GET /","GET /product/{id}","GET /cart","POST /cart","POST /cart/empty","POST /setCurrency","POST /cart/checkout","GET /assistant","POST /bot","GET /product-meta/{ids}","GET /logout","GET /_healthz"],"stores":["Cookie: shop_session-id","Cookie: shop_currency"],"evidence":[{"ref":"microservices-demo:src/frontend/main.go:150","quote":"r.HandleFunc(baseUrl+\"/\", svc.homeHandler)"},{"ref":"microservices-demo:src/frontend/main.go:171","quote":"http.ListenAndServe(addr+\":\"+srvPort, handler)"},{"ref":"microservices-demo:src/frontend/Dockerfile:44","quote":"ENTRYPOINT [\"/src/server\"]"},{"ref":"microservices-demo:kubernetes-manifests/frontend.yaml:130","quote":"type: LoadBalancer"},{"ref":"microservices-demo:src/frontend/main.go:44","quote":"cookieSessionID = cookiePrefix + \"session-id\""}]},{"id":"productcatalogservice","label":"Product catalog service","short":"Lists products","layer":"services","repo":"microservices-demo","purpose":"Go gRPC service that returns the product list and single products. By default it loads the catalogue from the bundled \u003ccode>products.json\u003c/code>; if \u003ccode>ALLOYDB_CLUSTER_NAME\u003c/code> is set it reads it from an AlloyDB table instead.","exposes":["gRPC ListProducts","gRPC GetProduct","gRPC SearchProducts","port 3550"],"stores":["products.json (default, read-only)","AlloyDB products table (optional)"],"evidence":[{"ref":"microservices-demo:src/productcatalogservice/server.go:143","quote":"pb.RegisterProductCatalogServiceServer(srv, svc)"},{"ref":"microservices-demo:src/productcatalogservice/catalog_loader.go:47","quote":"os.ReadFile(\"products.json\")"},{"ref":"microservices-demo:src/productcatalogservice/catalog_loader.go:37","quote":"os.Getenv(\"ALLOYDB_CLUSTER_NAME\") != \"\""},{"ref":"microservices-demo:protos/demo.proto:71","quote":"service ProductCatalogService {"},{"ref":"microservices-demo:src/productcatalogservice/Dockerfile:43","quote":"EXPOSE 3550"}],"tests":[{"kind":"test","name":"TestGetProductExists","note":"GetProduct returns a known product (run in CI by ci-main)","ref":"microservices-demo:src/productcatalogservice/product_catalog_test.go:58","quote":"func TestGetProductExists(t *testing.T)"},{"kind":"test","name":"TestListProducts","note":"ListProducts returns the catalogue","ref":"microservices-demo:src/productcatalogservice/product_catalog_test.go:79","quote":"func TestListProducts(t *testing.T)"}]},{"id":"currencyservice","label":"Currency service","short":"Converts prices","layer":"services","repo":"microservices-demo","purpose":"Node.js gRPC service that lists supported currencies and converts a \u003ccode>Money\u003c/code> amount via EUR, using fixed rates from a JSON file shipped in the image.","exposes":["gRPC GetSupportedCurrencies","gRPC Convert","port 7000 (from PORT)"],"stores":["data/currency_conversion.json (static rates)"],"evidence":[{"ref":"microservices-demo:src/currencyservice/server.js:185","quote":"shopProto.CurrencyService.service, {getSupportedCurrencies, convert}"},{"ref":"microservices-demo:src/currencyservice/server.js:110","quote":"require('./data/currency_conversion.json')"},{"ref":"microservices-demo:src/currencyservice/Dockerfile:45","quote":"ENTRYPOINT [ \"node\", \"server.js\" ]"},{"ref":"microservices-demo:src/currencyservice/server.js:80","quote":"path.join(__dirname, './proto/demo.proto')"},{"ref":"microservices-demo:src/currencyservice/server.js:83","quote":"const PORT = process.env.PORT;"},{"ref":"microservices-demo:kubernetes-manifests/currencyservice.yaml:52","quote":"value: \"7000\""}]},{"id":"cartservice","label":"Cart service","short":"Holds shopping carts","layer":"services","repo":"microservices-demo","purpose":"C# (.NET) gRPC service that adds items to, reads and empties a shopper's cart, keyed by \u003ccode>user_id\u003c/code>. The store is chosen at start-up from env vars: Redis (default), Spanner, AlloyDB, or an in-process memory cache when none is set.","callout":"The class is called \u003ccode>RedisCartStore\u003c/code> even when it runs on the in-memory cache.","exposes":["gRPC AddItem","gRPC GetCart","gRPC EmptyCart","port 7070"],"stores":["Redis: key = user_id, value = Cart protobuf (default)","Spanner: CartItems (optional)","AlloyDB: table named by ALLOYDB_TABLE_NAME (optional)"],"evidence":[{"ref":"microservices-demo:src/cartservice/src/Startup.cs:74","quote":"endpoints.MapGrpcService\u003cCartService>();"},{"ref":"microservices-demo:src/cartservice/src/services/CartService.cs:34","quote":"public async override Task\u003cEmpty> AddItem("},{"ref":"microservices-demo:src/cartservice/src/Startup.cs:40","quote":"services.AddSingleton\u003cICartStore, RedisCartStore>();"},{"ref":"microservices-demo:src/cartservice/src/cartservice.csproj:17","quote":"Include=\"protos\\Cart.proto\""},{"ref":"microservices-demo:src/cartservice/src/Dockerfile:40","quote":"EXPOSE 7070"},{"ref":"microservices-demo:src/cartservice/src/cartstore/SpannerCartStore.cs:25","quote":"TableName = \"CartItems\";"},{"ref":"microservices-demo:src/cartservice/src/cartstore/AlloyDBCartStore.cs:58","quote":"tableName = configuration[\"ALLOYDB_TABLE_NAME\"];"}],"tests":[{"kind":"test","name":"AddItem_New_Inserted","note":"Adds a new item over gRPC against an in-process test server; the test host sets no REDIS_ADDR, so Startup falls back to the in-memory cache. Run by ci-main via dotnet test","ref":"microservices-demo:src/cartservice/tests/CartServiceTests.cs:117","quote":"public async Task AddItem_New_Inserted()"},{"kind":"test","name":"AddItem_ItemExists_Updated","note":"Adding the same product twice increments the quantity","ref":"microservices-demo:src/cartservice/tests/CartServiceTests.cs:71","quote":"public async Task AddItem_ItemExists_Updated()"},{"kind":"test","name":"GetItem_NoAddItemBefore_EmptyCartReturned","note":"GetCart for an unknown user returns an empty cart","ref":"microservices-demo:src/cartservice/tests/CartServiceTests.cs:42","quote":"GetItem_NoAddItemBefore_EmptyCartReturned()"}]},{"id":"redis-cart","label":"Redis (carts)","short":"Default cart store","layer":"data","repo":"microservices-demo","purpose":"In-cluster Redis (\u003ccode>redis:alpine\u003c/code>) deployed next to the cart service in the default manifests. Its data volume is an \u003ccode>emptyDir\u003c/code>, so carts are lost when the pod is replaced.","callout":"The optional \u003ccode>memorystore\u003c/code>, \u003ccode>spanner\u003c/code> and \u003ccode>alloydb\u003c/code> kustomize components delete this Deployment and Service.","exposes":["Redis port 6379"],"stores":["Carts (serialised Cart protobuf per user_id)"],"evidence":[{"ref":"microservices-demo:kubernetes-manifests/cartservice.yaml:92","quote":"name: redis-cart"},{"ref":"microservices-demo:kubernetes-manifests/cartservice.yaml:118","quote":"image: redis:alpine"},{"ref":"microservices-demo:kubernetes-manifests/cartservice.yaml:141","quote":"emptyDir: {}"},{"ref":"microservices-demo:helm-chart/values.yaml:202","quote":"type: redis"}]},{"id":"alloydb","label":"AlloyDB (optional)","short":"Optional Postgres store","layer":"data","repo":"microservices-demo","purpose":"Google Cloud AlloyDB for PostgreSQL, created outside Kubernetes with \u003ccode>gcloud\u003c/code>. The \u003ccode>alloydb\u003c/code> kustomize component points the cart and product catalogue services at it, and the shopping assistant always needs it for its vector search over product descriptions.","callout":"Not part of the default deployment: the kustomize components only pass placeholder connection settings such as \u003ccode>ALLOYDB_PRIMARY_IP_VAL\u003c/code>.","exposes":[],"stores":["Carts table (optional, cart service)","Products table (optional, product catalogue)","Product description embeddings (shopping assistant)"],"evidence":[{"ref":"microservices-demo:kustomize/components/shopping-assistant/scripts/1_deploy_alloydb_infra.sh:69","quote":"gcloud alloydb instances create"},{"ref":"microservices-demo:kustomize/components/alloydb/kustomization.yaml:35","quote":"value: ALLOYDB_PRIMARY_IP_VAL"},{"ref":"microservices-demo:kustomize/components/alloydb/kustomization.yaml:64","quote":"name: ALLOYDB_CLUSTER_NAME"},{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:52","quote":"AlloyDBVectorStore.create_sync("}]},{"id":"spanner","label":"Cloud Spanner (optional)","short":"Optional cart store","layer":"data","repo":"microservices-demo","purpose":"Google Cloud Spanner, used as the cart store only when the \u003ccode>spanner\u003c/code> kustomize component sets \u003ccode>SPANNER_CONNECTION_STRING\u003c/code>. Carts are rows in the \u003ccode>CartItems\u003c/code> table (default instance \u003ccode>onlineboutique\u003c/code>, database \u003ccode>carts\u003c/code>).","exposes":[],"stores":["CartItems (optional, cart service)"],"evidence":[{"ref":"microservices-demo:kustomize/components/spanner/kustomization.yaml:32","quote":"name: SPANNER_CONNECTION_STRING"},{"ref":"microservices-demo:src/cartservice/src/cartstore/SpannerCartStore.cs:25","quote":"TableName = \"CartItems\";"},{"ref":"microservices-demo:src/cartservice/src/cartstore/SpannerCartStore.cs:26","quote":"DefaultInstanceName = \"onlineboutique\";"},{"ref":"microservices-demo:src/cartservice/src/cartstore/SpannerCartStore.cs:27","quote":"DefaultDatabaseName = \"carts\";"}]},{"id":"adservice","label":"Ad service","short":"Serves text ads","layer":"services","repo":"microservices-demo","purpose":"Java gRPC service that returns text ads for given category keys, or random ads when no key matches. Ads are a hard-coded in-memory map.","exposes":["gRPC GetAds","port 9555"],"stores":["In-memory ads map (hard-coded)"],"evidence":[{"ref":"microservices-demo:src/adservice/src/main/java/hipstershop/AdService.java:59","quote":".addService(new AdServiceImpl())"},{"ref":"microservices-demo:src/adservice/src/main/java/hipstershop/AdService.java:54","quote":"getOrDefault(\"PORT\", \"9555\")"},{"ref":"microservices-demo:src/adservice/src/main/java/hipstershop/AdService.java:185","quote":"ImmutableListMultimap.\u003cString, Ad>builder()"},{"ref":"microservices-demo:src/adservice/build.gradle:96","quote":"mainClass.set('hipstershop.AdService')"}]},{"id":"recommendationservice","label":"Recommendation service","short":"Suggests products","layer":"services","repo":"microservices-demo","purpose":"Python gRPC service that fetches the whole catalogue from the \u003cb>Product catalog\u003c/b> and returns up to 5 random product ids not in the request. It does not use the user id.","exposes":["gRPC ListRecommendations","port 8080"],"stores":[],"evidence":[{"ref":"microservices-demo:src/recommendationservice/recommendation_server.py:143","quote":"add_RecommendationServiceServicer_to_server(service, server)"},{"ref":"microservices-demo:src/recommendationservice/recommendation_server.py:79","quote":"random.sample(range(num_products), num_return)"},{"ref":"microservices-demo:src/recommendationservice/Dockerfile:55","quote":"ENTRYPOINT [\"python\", \"recommendation_server.py\"]"}]},{"id":"shoppingassistantservice","label":"Shopping assistant","short":"AI room-design chat (optional)","layer":"services","repo":"microservices-demo","purpose":"Optional Python Flask service behind the shop's chat box. It asks Gemini to describe an uploaded room photo, runs a vector similarity search over product descriptions in AlloyDB, then asks Gemini again for recommendations and returns the text. It reads the AlloyDB password from \u003cb>Secret Manager\u003c/b> and opens the AlloyDB vector store when the module loads, so it cannot start without both.","callout":"Not in the default deployment: only added by the \u003ccode>shopping-assistant\u003c/code> kustomize component, and not available in the Helm chart.","exposes":["HTTP POST / (container 8080, Service port 80)"],"stores":[],"evidence":[{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:65","quote":"@app.route(\"/\", methods=['POST'])"},{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:120","quote":"app.run(host='0.0.0.0', port=8080)"},{"ref":"microservices-demo:kustomize/components/shopping-assistant/kustomization.yaml:18","quote":"- shoppingassistantservice.yaml"},{"ref":"microservices-demo:helm-chart/values.yaml:216","quote":"@TODO: This service is not currently available in Helm."},{"ref":"microservices-demo:src/shoppingassistantservice/Dockerfile:47","quote":"ENTRYPOINT [\"python\", \"shoppingassistantservice.py\"]"},{"ref":"microservices-demo:kustomize/components/shopping-assistant/shoppingassistantservice.yaml:87","quote":"port: 80"},{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:52","quote":"vectorstore = AlloyDBVectorStore.create_sync("}]},{"id":"gemini-api","label":"Google Gemini API","short":"External LLM","layer":"external","repo":"microservices-demo","purpose":"Google's generative AI models, called by the Shopping assistant through LangChain (\u003ccode>gemini-1.5-flash\u003c/code> for chat and vision, \u003ccode>embedding-001\u003c/code> for embeddings). Only used when the shopping assistant is deployed.","exposes":[],"stores":[],"evidence":[{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:72","quote":"ChatGoogleGenerativeAI(model=\"gemini-1.5-flash\")"},{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:55","quote":"GoogleGenerativeAIEmbeddings(model=\"models/embedding-001\")"}]},{"id":"secret-manager","label":"Google Secret Manager","short":"Holds the AlloyDB password","layer":"external","repo":"microservices-demo","purpose":"Google Cloud Secret Manager. The shopping assistant, and the cart and product catalogue services when they run on AlloyDB, read the AlloyDB password from the secret named by \u003ccode>ALLOYDB_SECRET_NAME\u003c/code> before connecting.","exposes":[],"stores":["AlloyDB password (secret named by ALLOYDB_SECRET_NAME)"],"evidence":[{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:19","quote":"from google.cloud import secretmanager_v1"},{"ref":"microservices-demo:src/productcatalogservice/catalog_loader.go:76","quote":"client.AccessSecretVersion(ctx, req)"},{"ref":"microservices-demo:src/cartservice/src/cartstore/AlloyDBCartStore.cs:33","quote":"SecretManagerServiceClient.Create()"}]},{"id":"checkoutservice","label":"Checkout service","short":"Places orders","layer":"services","repo":"microservices-demo","purpose":"Go gRPC service that turns a shopper's cart into an order: it reads the cart, prices every item and the shipping in the shopper's currency, asks \u003cb>Payment\u003c/b> to charge the card, asks \u003cb>Shipping\u003c/b> to ship, empties the cart and asks \u003cb>Email\u003c/b> to send a confirmation.","callout":"It stores nothing itself: the order id is a fresh UUID and the order only lives in the reply and the confirmation request.","exposes":["gRPC: hipstershop.CheckoutService/PlaceOrder","gRPC: grpc.health.v1.Health","port 5050"],"stores":[],"evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:142","quote":"pb.RegisterCheckoutServiceServer(srv, svc)"},{"ref":"microservices-demo:src/checkoutservice/main.go:46","quote":"listenPort  = \"5050\""},{"ref":"microservices-demo:src/checkoutservice/main.go:230","quote":"func (cs *checkoutService) PlaceOrder("},{"ref":"microservices-demo:src/checkoutservice/main.go:233","quote":"orderID, err := uuid.NewUUID()"},{"ref":"microservices-demo:protos/demo.proto:225","quote":"rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse)"},{"ref":"microservices-demo:src/checkoutservice/Dockerfile:44","quote":"ENTRYPOINT [\"/src/checkoutservice\"]"}],"tests":[{"kind":"test","name":"TestSum","note":"Unit test of \u003ccode>money.Sum\u003c/code>, used to total an order (the money package tests do not cover \u003ccode>MultiplySlow\u003c/code>); not run by the CI workflows","ref":"microservices-demo:src/checkoutservice/money/money_test.go:202","quote":"func TestSum(t *testing.T) {"}]},{"id":"paymentservice","label":"Payment service","short":"Fake card charge","layer":"services","repo":"microservices-demo","purpose":"Node.js gRPC service that pretends to charge a card. It only validates the card number, accepts only VISA or MasterCard, rejects expired cards, logs the transaction and returns a random UUID as the transaction id. No payment provider is called and no money moves.","callout":"The CVV is never checked and no transaction is stored (the id is just \u003ccode>uuidv4()\u003c/code>), but every Charge call logs the full request, including card number and CVV, to stdout.","exposes":["gRPC: hipstershop.PaymentService/Charge","gRPC: grpc.health.v1.Health","port 50051 (from PORT)"],"stores":[],"evidence":[{"ref":"microservices-demo:src/paymentservice/server.js:89","quote":"hipsterShopPackage.PaymentService.service"},{"ref":"microservices-demo:src/paymentservice/server.js:91","quote":"charge: HipsterShopServer.ChargeServiceHandler.bind(this)"},{"ref":"microservices-demo:src/paymentservice/server.js:43","quote":"PaymentService#Charge invoked with request ${JSON.stringify("},{"ref":"microservices-demo:src/paymentservice/charge.js:56","quote":"Verifies the credit card number and (pretend) charges the card."},{"ref":"microservices-demo:src/paymentservice/charge.js:64","quote":"const cardInfo = cardValidator(cardNumber);"},{"ref":"microservices-demo:src/paymentservice/charge.js:74","quote":"if (!(cardType === 'visa' || cardType === 'mastercard'))"},{"ref":"microservices-demo:src/paymentservice/charge.js:80","quote":"throw new ExpiredCreditCard("},{"ref":"microservices-demo:src/paymentservice/charge.js:85","quote":"return { transaction_id: uuidv4() };"},{"ref":"microservices-demo:src/paymentservice/Dockerfile:45","quote":"ENTRYPOINT [ \"node\", \"index.js\" ]"},{"ref":"microservices-demo:src/paymentservice/index.js:70","quote":"const PORT = process.env['PORT'];"},{"ref":"microservices-demo:kubernetes-manifests/paymentservice.yaml:51","quote":"value: \"50051\""}]},{"id":"shippingservice","label":"Shipping service","short":"Fake shipping quotes","layer":"services","repo":"microservices-demo","purpose":"Go gRPC service that quotes and \"ships\" orders without any carrier. A quote is a flat 8.99 USD for any non-empty cart (0 for an empty one); shipping an order just makes up a random tracking id.","callout":"GetQuote looks only at item quantities, not at the address.","exposes":["gRPC: hipstershop.ShippingService/GetQuote","gRPC: hipstershop.ShippingService/ShipOrder","gRPC: grpc.health.v1.Health","port 50051"],"stores":[],"evidence":[{"ref":"microservices-demo:src/shippingservice/main.go:92","quote":"pb.RegisterShippingServiceServer(srv, svc)"},{"ref":"microservices-demo:src/shippingservice/main.go:37","quote":"defaultPort = \"50051\""},{"ref":"microservices-demo:src/shippingservice/quote.go:38","quote":"return CreateQuoteFromFloat(8.99)"},{"ref":"microservices-demo:src/shippingservice/main.go:140","quote":"ShipOrder mocks that the requested items will be shipped."},{"ref":"microservices-demo:src/shippingservice/main.go:147","quote":"id := CreateTrackingId(baseAddress)"},{"ref":"microservices-demo:src/shippingservice/tracker.go:36","quote":"return 65 + uint32(rand.Intn(25))"},{"ref":"microservices-demo:src/shippingservice/Dockerfile:44","quote":"ENTRYPOINT [\"/src/shippingservice\"]"}],"tests":[{"kind":"test","name":"TestGetQuote","note":"Unit test of the quote logic, run in CI","ref":"microservices-demo:src/shippingservice/shippingservice_test.go:27","quote":"func TestGetQuote(t *testing.T) {"},{"kind":"test","name":"TestShipOrder","note":"Unit test of tracking id generation","ref":"microservices-demo:src/shippingservice/shippingservice_test.go:83","quote":"func TestShipOrder(t *testing.T) {"}]},{"id":"emailservice","label":"Email service","short":"Logs order emails","layer":"services","repo":"microservices-demo","purpose":"Python gRPC service that receives order confirmation requests. It always starts in dummy mode, which only writes a log line that a confirmation was requested; no email is sent.","callout":"The real sender class raises \u003ccode>cloud mail client not implemented\u003c/code>, and non-dummy mode raises too.","exposes":["gRPC: hipstershop.EmailService/SendOrderConfirmation","gRPC: grpc.health.v1.Health","port 8080 (Kubernetes Service port 5000)"],"stores":[],"evidence":[{"ref":"microservices-demo:src/emailservice/email_server.py:200","quote":"start(dummy_mode = True)"},{"ref":"microservices-demo:src/emailservice/email_server.py:110","quote":"A request to send order confirmation email to {} has been received."},{"ref":"microservices-demo:src/emailservice/email_server.py:63","quote":"raise Exception('cloud mail client not implemented')"},{"ref":"microservices-demo:src/emailservice/email_server.py:124","quote":"raise Exception('non-dummy mode not implemented yet')"},{"ref":"microservices-demo:src/emailservice/email_server.py:126","quote":"demo_pb2_grpc.add_EmailServiceServicer_to_server(service, server)"},{"ref":"microservices-demo:src/emailservice/Dockerfile:54","quote":"ENTRYPOINT [ \"python\", \"email_server.py\" ]"},{"ref":"microservices-demo:src/emailservice/email_server.py:129","quote":"port = os.environ.get('PORT', \"8080\")"},{"ref":"microservices-demo:kubernetes-manifests/emailservice.yaml:82","quote":"port: 5000"}]},{"id":"loadgenerator","label":"Load generator","short":"Simulated shoppers","layer":"clients","repo":"microservices-demo","purpose":"Locust (Python) script that plays fake shoppers against the frontend over HTTP: browsing, changing currency, adding to cart, viewing the cart and checking out with generated VISA card numbers. CI uses its error count as the smoke test.","callout":"It always pays with a Faker-generated VISA number and an expiry year after the current one, so the payment service's card-type and expired-card rejections are never exercised.","exposes":[],"stores":[],"evidence":[{"ref":"microservices-demo:src/loadgenerator/Dockerfile:52","quote":"locust --host=\"http://${FRONTEND_ADDR}\" --headless"},{"ref":"microservices-demo:src/loadgenerator/locustfile.py:90","quote":"class WebsiteUser(FastHttpUser):"},{"ref":"microservices-demo:src/loadgenerator/locustfile.py:68","quote":"fake.credit_card_number(card_type=\"visa\")"},{"ref":"microservices-demo:kubernetes-manifests/loadgenerator.yaml:80","quote":"image: loadgenerator"},{"ref":"microservices-demo:src/loadgenerator/locustfile.py:70","quote":"random.randint(current_year, current_year + 70)"},{"ref":"microservices-demo:src/loadgenerator/locustfile.py:60","quote":"current_year = datetime.datetime.now().year+1"}]}],"edges":[{"from":"loadgenerator","to":"frontend","protocol":"HTTP","what":"Simulated shoppers browse, add to cart and check out (POST /cart/checkout) against the frontend","evidence":[{"ref":"microservices-demo:src/loadgenerator/locustfile.py:61","quote":"l.client.post(\"/cart/checkout\", {"},{"ref":"microservices-demo:src/loadgenerator/Dockerfile:52","quote":"--host=\"http://${FRONTEND_ADDR}\""},{"ref":"microservices-demo:kubernetes-manifests/loadgenerator.yaml:83","quote":"value: \"frontend:80\""},{"ref":"microservices-demo:src/frontend/main.go:157","quote":"r.HandleFunc(baseUrl+\"/cart/checkout\", svc.placeOrderHandler)"},{"ref":"microservices-demo:src/loadgenerator/locustfile.py:51","quote":"l.client.post(\"/cart\", {"}]},{"from":"frontend","to":"checkoutservice","protocol":"gRPC","what":"Places the order when the shopper submits the checkout form (PlaceOrder)","evidence":[{"ref":"microservices-demo:src/frontend/handlers.go:354","quote":"pb.NewCheckoutServiceClient(fe.checkoutSvcConn)"},{"ref":"microservices-demo:src/frontend/handlers.go:355","quote":"PlaceOrder(r.Context(), &pb.PlaceOrderRequest{"},{"ref":"microservices-demo:src/frontend/main.go:136","quote":"mustMapEnv(&svc.checkoutSvcAddr, \"CHECKOUT_SERVICE_ADDR\")"},{"ref":"microservices-demo:kubernetes-manifests/frontend.yaml:80","quote":"value: \"checkoutservice:5050\""}]},{"from":"frontend","to":"shippingservice","protocol":"gRPC","what":"Gets a shipping quote (with no address) to show on the cart page (GetQuote)","evidence":[{"ref":"microservices-demo:src/frontend/rpc.go:88","quote":"pb.NewShippingServiceClient(fe.shippingSvcConn).GetQuote(ctx,"},{"ref":"microservices-demo:src/frontend/handlers.go:271","quote":"fe.getShippingQuote(r.Context(), cart, currentCurrency(r))"},{"ref":"microservices-demo:src/frontend/main.go:137","quote":"mustMapEnv(&svc.shippingSvcAddr, \"SHIPPING_SERVICE_ADDR\")"},{"ref":"microservices-demo:kubernetes-manifests/frontend.yaml:78","quote":"value: \"shippingservice:50051\""}]},{"from":"checkoutservice","to":"cartservice","protocol":"gRPC","what":"Reads the shopper's cart (GetCart), then empties it after shipping (EmptyCart)","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:325","quote":"pb.NewCartServiceClient(cs.cartSvcConn).GetCart(ctx"},{"ref":"microservices-demo:src/checkoutservice/main.go:333","quote":"pb.NewCartServiceClient(cs.cartSvcConn).EmptyCart(ctx"},{"ref":"microservices-demo:src/checkoutservice/main.go:113","quote":"mustMapEnv(&svc.cartSvcAddr, \"CART_SERVICE_ADDR\")"},{"ref":"microservices-demo:kubernetes-manifests/checkoutservice.yaml:68","quote":"value: \"cartservice:7070\""}]},{"from":"checkoutservice","to":"productcatalogservice","protocol":"gRPC","what":"Looks up each cart item's product to get its USD price (GetProduct, once per item)","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:344","quote":"cl.GetProduct(ctx, &pb.GetProductRequest{Id: item.GetProductId()})"},{"ref":"microservices-demo:src/checkoutservice/main.go:112","quote":"\"PRODUCT_CATALOG_SERVICE_ADDR\")"},{"ref":"microservices-demo:kubernetes-manifests/checkoutservice.yaml:58","quote":"value: \"productcatalogservice:3550\""}]},{"from":"checkoutservice","to":"currencyservice","protocol":"gRPC","what":"Converts each item price and the shipping quote from USD to the shopper's currency (Convert)","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:360","quote":"pb.NewCurrencyServiceClient(cs.currencySvcConn).Convert("},{"ref":"microservices-demo:src/checkoutservice/main.go:114","quote":"mustMapEnv(&svc.currencySvcAddr, \"CURRENCY_SERVICE_ADDR\")"},{"ref":"microservices-demo:kubernetes-manifests/checkoutservice.yaml:66","quote":"value: \"currencyservice:7000\""}]},{"from":"checkoutservice","to":"shippingservice","protocol":"gRPC","what":"Gets a shipping quote for the cart (GetQuote), and after payment asks to ship the order (ShipOrder)","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:314","quote":"pb.NewShippingServiceClient(cs.shippingSvcConn)."},{"ref":"microservices-demo:src/checkoutservice/main.go:315","quote":"GetQuote(ctx, &pb.GetQuoteRequest{"},{"ref":"microservices-demo:src/checkoutservice/main.go:387","quote":"pb.NewShippingServiceClient(cs.shippingSvcConn).ShipOrder(ctx"},{"ref":"microservices-demo:src/checkoutservice/main.go:111","quote":"mustMapEnv(&svc.shippingSvcAddr, \"SHIPPING_SERVICE_ADDR\")"},{"ref":"microservices-demo:kubernetes-manifests/checkoutservice.yaml:60","quote":"value: \"shippingservice:50051\""}]},{"from":"checkoutservice","to":"paymentservice","protocol":"gRPC","what":"Asks for the order total to be charged to the shopper's card (Charge)","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:370","quote":"pb.NewPaymentServiceClient(cs.paymentSvcConn).Charge(ctx"},{"ref":"microservices-demo:src/checkoutservice/main.go:116","quote":"mustMapEnv(&svc.paymentSvcAddr, \"PAYMENT_SERVICE_ADDR\")"},{"ref":"microservices-demo:kubernetes-manifests/checkoutservice.yaml:62","quote":"value: \"paymentservice:50051\""}]},{"from":"checkoutservice","to":"emailservice","protocol":"gRPC","what":"Asks for an order confirmation to be sent to the shopper's email (SendOrderConfirmation); a failure is only logged","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:380","quote":"pb.NewEmailServiceClient(cs.emailSvcConn).SendOrderConfirmation("},{"ref":"microservices-demo:src/checkoutservice/main.go:115","quote":"mustMapEnv(&svc.emailSvcAddr, \"EMAIL_SERVICE_ADDR\")"},{"ref":"microservices-demo:kubernetes-manifests/checkoutservice.yaml:64","quote":"value: \"emailservice:5000\""},{"ref":"microservices-demo:kubernetes-manifests/emailservice.yaml:83","quote":"targetPort: 8080"}]},{"from":"frontend","to":"productcatalogservice","protocol":"gRPC","what":"Lists all products (home page) and fetches single products (product page, add to cart, cart lines, recommendations, /product-meta)","evidence":[{"ref":"microservices-demo:src/frontend/rpc.go:47","quote":"ListProducts(ctx, &pb.Empty{})"},{"ref":"microservices-demo:src/frontend/rpc.go:53","quote":"GetProduct(ctx, &pb.GetProductRequest{Id: id})"},{"ref":"microservices-demo:src/frontend/main.go:132","quote":"\"PRODUCT_CATALOG_SERVICE_ADDR\""},{"ref":"microservices-demo:kubernetes-manifests/frontend.yaml:70","quote":"value: \"productcatalogservice:3550\""}]},{"from":"frontend","to":"currencyservice","protocol":"gRPC","what":"Gets the supported currency codes and converts product prices (home, product and cart pages) and the cart's shipping quote to the shopper's currency","evidence":[{"ref":"microservices-demo:src/frontend/rpc.go:32","quote":"GetSupportedCurrencies(ctx, &pb.Empty{})"},{"ref":"microservices-demo:src/frontend/rpc.go:82","quote":"Convert(ctx, &pb.CurrencyConversionRequest{"},{"ref":"microservices-demo:src/frontend/rpc.go:95","quote":"fe.convertCurrency(ctx, quote.GetCostUsd(), currency)"},{"ref":"microservices-demo:src/frontend/main.go:133","quote":"\"CURRENCY_SERVICE_ADDR\""},{"ref":"microservices-demo:kubernetes-manifests/frontend.yaml:72","quote":"value: \"currencyservice:7000\""}]},{"from":"frontend","to":"cartservice","protocol":"gRPC","what":"Reads, adds to and empties the shopper's cart, keyed by the session id","evidence":[{"ref":"microservices-demo:src/frontend/rpc.go:58","quote":"GetCart(ctx, &pb.GetCartRequest{UserId: userID})"},{"ref":"microservices-demo:src/frontend/rpc.go:68","quote":"AddItem(ctx, &pb.AddItemRequest{"},{"ref":"microservices-demo:src/frontend/rpc.go:63","quote":"EmptyCart(ctx, &pb.EmptyCartRequest{UserId: userID})"},{"ref":"microservices-demo:src/frontend/main.go:134","quote":"\"CART_SERVICE_ADDR\""},{"ref":"microservices-demo:kubernetes-manifests/frontend.yaml:74","quote":"value: \"cartservice:7070\""}]},{"from":"frontend","to":"recommendationservice","protocol":"gRPC","what":"Asks for recommended product ids on the product, cart and order-confirmation pages (not the home page)","evidence":[{"ref":"microservices-demo:src/frontend/rpc.go:100","quote":"ListRecommendations(ctx,"},{"ref":"microservices-demo:src/frontend/handlers.go:178","quote":"fe.getRecommendations(r.Context(), sessionID(r), []string{id})"},{"ref":"microservices-demo:src/frontend/handlers.go:266","quote":"getRecommendations(r.Context(), sessionID(r), cartIDs(cart))"},{"ref":"microservices-demo:src/frontend/handlers.go:378","quote":"fe.getRecommendations(r.Context(), sessionID(r), nil)"},{"ref":"microservices-demo:src/frontend/main.go:135","quote":"\"RECOMMENDATION_SERVICE_ADDR\""},{"ref":"microservices-demo:kubernetes-manifests/frontend.yaml:76","quote":"value: \"recommendationservice:8080\""}]},{"from":"frontend","to":"adservice","protocol":"gRPC","what":"Fetches ads with a 100 ms timeout and shows one at random; errors are logged and ignored","evidence":[{"ref":"microservices-demo:src/frontend/rpc.go:123","quote":"GetAds(ctx, &pb.AdRequest{"},{"ref":"microservices-demo:src/frontend/rpc.go:120","quote":"context.WithTimeout(ctx, time.Millisecond*100)"},{"ref":"microservices-demo:src/frontend/main.go:138","quote":"\"AD_SERVICE_ADDR\""},{"ref":"microservices-demo:kubernetes-manifests/frontend.yaml:82","quote":"value: \"adservice:9555\""}]},{"from":"frontend","to":"shoppingassistantservice","protocol":"HTTP","what":"Forwards the chat box's JSON body (message, image) from POST /bot to the assistant and returns its content as message","evidence":[{"ref":"microservices-demo:src/frontend/handlers.go:464","quote":"url := \"http://\" + fe.shoppingAssistantSvcAddr"},{"ref":"microservices-demo:src/frontend/handlers.go:465","quote":"http.NewRequest(http.MethodPost, url, r.Body)"},{"ref":"microservices-demo:src/frontend/main.go:139","quote":"\"SHOPPING_ASSISTANT_SERVICE_ADDR\""},{"ref":"microservices-demo:kubernetes-manifests/frontend.yaml:84","quote":"value: \"shoppingassistantservice:80\""}]},{"from":"recommendationservice","to":"productcatalogservice","protocol":"gRPC","what":"Loads the full product list on every ListRecommendations call to pick random ids","evidence":[{"ref":"microservices-demo:src/recommendationservice/recommendation_server.py:73","quote":"product_catalog_stub.ListProducts(demo_pb2.Empty())"},{"ref":"microservices-demo:src/recommendationservice/recommendation_server.py:136","quote":"demo_pb2_grpc.ProductCatalogServiceStub(channel)"},{"ref":"microservices-demo:src/recommendationservice/recommendation_server.py:131","quote":"os.environ.get('PRODUCT_CATALOG_SERVICE_ADDR', '')"},{"ref":"microservices-demo:kubernetes-manifests/recommendationservice.yaml:61","quote":"value: \"productcatalogservice:3550\""}]},{"from":"productcatalogservice","to":"alloydb","protocol":"PostgreSQL","what":"Optional: when ALLOYDB_CLUSTER_NAME is set, loads the product catalogue from an AlloyDB table instead of products.json","evidence":[{"ref":"microservices-demo:src/productcatalogservice/catalog_loader.go:38","quote":"return loadCatalogFromAlloyDB(catalog)"},{"ref":"microservices-demo:src/productcatalogservice/catalog_loader.go:133","quote":"pool.Query(context.Background(), query)"},{"ref":"microservices-demo:kustomize/components/alloydb/kustomization.yaml:64","quote":"name: ALLOYDB_CLUSTER_NAME"}]},{"from":"productcatalogservice","to":"secret-manager","protocol":"SDK","what":"Optional (AlloyDB mode): reads the AlloyDB password before connecting","evidence":[{"ref":"microservices-demo:src/productcatalogservice/catalog_loader.go:64","quote":"secretmanager.NewClient(ctx)"},{"ref":"microservices-demo:src/productcatalogservice/catalog_loader.go:76","quote":"client.AccessSecretVersion(ctx, req)"}]},{"from":"cartservice","to":"redis-cart","protocol":"Redis","what":"Default: reads and writes each cart as protobuf bytes under the user id","evidence":[{"ref":"microservices-demo:src/cartservice/src/Startup.cs:36","quote":"services.AddStackExchangeRedisCache(options =>"},{"ref":"microservices-demo:src/cartservice/src/Startup.cs:29","quote":"Configuration[\"REDIS_ADDR\"]"},{"ref":"microservices-demo:kubernetes-manifests/cartservice.yaml:51","quote":"value: \"redis-cart:6379\""},{"ref":"microservices-demo:src/cartservice/src/cartstore/RedisCartStore.cs:60","quote":"await _cache.SetAsync(userId, cart.ToByteArray());"}]},{"from":"cartservice","to":"alloydb","protocol":"PostgreSQL","what":"Optional: when ALLOYDB_PRIMARY_IP is set (and no Redis or Spanner settings), stores carts in an AlloyDB table","evidence":[{"ref":"microservices-demo:src/cartservice/src/Startup.cs:49","quote":"services.AddSingleton\u003cICartStore, AlloyDBCartStore>();"},{"ref":"microservices-demo:src/cartservice/src/cartstore/AlloyDBCartStore.cs:67","quote":"NpgsqlDataSource.Create(connectionString)"},{"ref":"microservices-demo:kustomize/components/alloydb/kustomization.yaml:34","quote":"name: ALLOYDB_PRIMARY_IP"}]},{"from":"cartservice","to":"secret-manager","protocol":"SDK","what":"Optional (AlloyDB mode): reads the AlloyDB password when the AlloyDB cart store is created","evidence":[{"ref":"microservices-demo:src/cartservice/src/cartstore/AlloyDBCartStore.cs:33","quote":"SecretManagerServiceClient.Create()"},{"ref":"microservices-demo:src/cartservice/src/cartstore/AlloyDBCartStore.cs:36","quote":"new SecretVersionName(projectId, secretId, \"latest\")"}]},{"from":"cartservice","to":"spanner","protocol":"Spanner","what":"Optional: when SPANNER_PROJECT or SPANNER_CONNECTION_STRING is set (and no REDIS_ADDR), stores carts in the CartItems table","evidence":[{"ref":"microservices-demo:src/cartservice/src/Startup.cs:44","quote":"services.AddSingleton\u003cICartStore, SpannerCartStore>();"},{"ref":"microservices-demo:src/cartservice/src/cartstore/SpannerCartStore.cs:59","quote":"spannerConnection = new(databaseString)"},{"ref":"microservices-demo:kustomize/components/spanner/kustomization.yaml:32","quote":"name: SPANNER_CONNECTION_STRING"}]},{"from":"shoppingassistantservice","to":"gemini-api","protocol":"HTTPS (SDK)","what":"Asks Gemini to describe the room image, embeds the search text, and asks Gemini for the final recommendation text","evidence":[{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:72","quote":"llm_vision = ChatGoogleGenerativeAI(model=\"gemini-1.5-flash\")"},{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:55","quote":"GoogleGenerativeAIEmbeddings(model=\"models/embedding-001\")"},{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:91","quote":"vectorstore.similarity_search(vector_search_prompt)"},{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:108","quote":"design_response = llm.invoke("},{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:82","quote":"response = llm_vision.invoke([message])"}]},{"from":"shoppingassistantservice","to":"alloydb","protocol":"PostgreSQL","what":"Runs a vector similarity search over product descriptions for each chat request; the vector store is opened at start-up","evidence":[{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:52","quote":"AlloyDBVectorStore.create_sync("},{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:57","quote":"content_column=\"description\""},{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:91","quote":"vectorstore.similarity_search(vector_search_prompt)"},{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:44","quote":"cluster=ALLOYDB_CLUSTER_NAME"}]},{"from":"shoppingassistantservice","to":"secret-manager","protocol":"SDK","what":"Reads the AlloyDB password from the secret named by ALLOYDB_SECRET_NAME once, at start-up","evidence":[{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:19","quote":"from google.cloud import secretmanager_v1"},{"ref":"microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:33","quote":"ALLOYDB_SECRET_NAME = os.environ[\"ALLOYDB_SECRET_NAME\"]"}]}],"flows":[{"id":"browse-home","title":"Load the home page","tagline":"Products in your currency","featured":true,"summary":"What the frontend's home handler calls, in order: currencies, product list, the shopper's cart (for the cart badge), one currency conversion \u003cb>per product\u003c/b>, then an ad. It does \u003cb>not\u003c/b> call the recommendation service.","actors":["frontend","currencyservice","productcatalogservice","cartservice","redis-cart","adservice"],"steps":[{"from":"frontend","to":"frontend","kind":"self","label":"GET / and ensure a session id","protocol":"HTTP","call":{"verb":"GET","target":"/"},"noPayload":true,"description":"Middleware sets a new random UUID in the \u003ccode>shop_session-id\u003c/code> cookie if the browser has none (or a fixed shared id when \u003ccode>ENABLE_SINGLE_SHARED_SESSION=true\u003c/code>, so every new browser shares one cart). The currency comes from the \u003ccode>shop_currency\u003c/code> cookie (default USD).","evidence":[{"ref":"microservices-demo:src/frontend/main.go:150","quote":"r.HandleFunc(baseUrl+\"/\", svc.homeHandler)"},{"ref":"microservices-demo:src/frontend/middleware.go:94","quote":"u, _ := uuid.NewRandom()"},{"ref":"microservices-demo:src/frontend/middleware.go:90","quote":"os.Getenv(\"ENABLE_SINGLE_SHARED_SESSION\") == \"true\""},{"ref":"microservices-demo:kustomize/components/single-shared-session/kustomization.yaml:30","quote":"name: ENABLE_SINGLE_SHARED_SESSION"},{"ref":"microservices-demo:src/frontend/handlers.go:574","quote":"c, _ := r.Cookie(cookieCurrency)"},{"ref":"microservices-demo:src/frontend/main.go:40","quote":"defaultCurrency = \"USD\""}]},{"from":"frontend","to":"currencyservice","kind":"req","label":"GetSupportedCurrencies","protocol":"gRPC","call":{"verb":"rpc","target":"CurrencyService/GetSupportedCurrencies"},"request":{},"requestSchema":{"ref":"microservices-demo:protos/demo.proto:52","quote":"message Empty {}"},"evidence":[{"ref":"microservices-demo:src/frontend/handlers.go:62","quote":"currencies, err := fe.getCurrencies(r.Context())"},{"ref":"microservices-demo:src/frontend/rpc.go:32","quote":"GetSupportedCurrencies(ctx, &pb.Empty{})"}]},{"from":"currencyservice","to":"frontend","kind":"res","label":"Currency codes","protocol":"gRPC","response":{"currency_codes":["EUR","USD","JPY","BGN","CZK","..."]},"responseSchema":{"ref":"microservices-demo:protos/demo.proto:163","quote":"message GetSupportedCurrenciesResponse {"},"description":"The frontend keeps only its whitelist (USD, EUR, CAD, JPY, GBP, TRY).","evidence":[{"ref":"microservices-demo:src/currencyservice/server.js:131","quote":"callback(null, {currency_codes: Object.keys(data)});"},{"ref":"microservices-demo:src/frontend/rpc.go:38","quote":"whitelistedCurrencies[c]"}]},{"from":"frontend","to":"productcatalogservice","kind":"req","label":"ListProducts","protocol":"gRPC","call":{"verb":"rpc","target":"ProductCatalogService/ListProducts"},"request":{},"requestSchema":{"ref":"microservices-demo:protos/demo.proto:52","quote":"message Empty {}"},"evidence":[{"ref":"microservices-demo:src/frontend/handlers.go:67","quote":"products, err := fe.getProducts(r.Context())"},{"ref":"microservices-demo:src/frontend/rpc.go:47","quote":"ListProducts(ctx, &pb.Empty{})"}]},{"from":"productcatalogservice","to":"frontend","kind":"res","label":"All products","protocol":"gRPC","response":{"products":[{"id":"OLJCESPC7Z","name":"Sunglasses","picture":"/static/img/products/sunglasses.jpg","price_usd":{"currency_code":"USD","units":19,"nanos":990000000},"categories":["accessories"],"...":"..."},"..."]},"responseSchema":{"ref":"microservices-demo:protos/demo.proto:89","quote":"message ListProductsResponse {"},"evidence":[{"ref":"microservices-demo:src/productcatalogservice/product_catalog.go:44","quote":"&pb.ListProductsResponse{Products: p.parseCatalog()}"}]},{"from":"frontend","to":"cartservice","kind":"req","label":"GetCart","protocol":"gRPC","call":{"verb":"rpc","target":"CartService/GetCart"},"request":{"user_id":"3f1c9a2e-7b4d-4e1a-9c0f-2d5e8b6a1f00"},"requestSchema":{"ref":"microservices-demo:src/cartservice/src/protos/Cart.proto:41","quote":"message GetCartRequest {"},"description":"Only used to show the number of items in the header.","evidence":[{"ref":"microservices-demo:src/frontend/handlers.go:72","quote":"cart, err := fe.getCart(r.Context(), sessionID(r))"},{"ref":"microservices-demo:src/frontend/handlers.go:114","quote":"\"cart_size\":     cartSize(cart)"}]},{"from":"cartservice","to":"redis-cart","kind":"req","label":"Read the cart","protocol":"Redis","payloadNote":"internal","description":"Reads the bytes under the user id; a missing key gives an empty cart.","evidence":[{"ref":"microservices-demo:src/cartservice/src/cartstore/RedisCartStore.cs:90","quote":"var value = await _cache.GetAsync(userId);"},{"ref":"microservices-demo:src/cartservice/src/cartstore/RedisCartStore.cs:98","quote":"return new Hipstershop.Cart();"}]},{"from":"cartservice","to":"frontend","kind":"res","label":"Cart","protocol":"gRPC","response":{"user_id":"3f1c9a2e-7b4d-4e1a-9c0f-2d5e8b6a1f00","items":[{"product_id":"OLJCESPC7Z","quantity":2}]},"responseSchema":{"ref":"microservices-demo:src/cartservice/src/protos/Cart.proto:45","quote":"message Cart {"},"evidence":[{"ref":"microservices-demo:src/cartservice/src/services/CartService.cs:42","quote":"return _cartStore.GetCartAsync(request.UserId);"}]},{"from":"frontend","to":"currencyservice","kind":"req","label":"Convert (once per product)","protocol":"gRPC","call":{"verb":"rpc","target":"CurrencyService/Convert"},"request":{"from":{"currency_code":"USD","units":19,"nanos":990000000},"to_code":"EUR"},"requestSchema":{"ref":"microservices-demo:protos/demo.proto:168","quote":"message CurrencyConversionRequest {"},"description":"Called in a loop for every product, even when the target is USD (the no-op shortcut is switched off).","evidence":[{"ref":"microservices-demo:src/frontend/handlers.go:84","quote":"fe.convertCurrency(r.Context(), p.GetPriceUsd(), currentCurrency(r))"},{"ref":"microservices-demo:src/frontend/rpc.go:27","quote":"avoidNoopCurrencyConversionRPC = false"},{"ref":"microservices-demo:src/frontend/rpc.go:82","quote":"Convert(ctx, &pb.CurrencyConversionRequest{"}]},{"from":"currencyservice","to":"frontend","kind":"res","label":"Money","protocol":"gRPC","response":{"currency_code":"EUR","units":17,"nanos":682441398},"responseSchema":{"ref":"microservices-demo:protos/demo.proto:146","quote":"message Money {"},"description":"Converts via EUR using the static rates file.","evidence":[{"ref":"microservices-demo:src/currencyservice/server.js:160","quote":"result.currency_code = request.to_code;"},{"ref":"microservices-demo:src/currencyservice/server.js:143","quote":"// Convert: from_currency --> EUR"}]},{"from":"frontend","to":"adservice","kind":"req","label":"GetAds (no context keys)","protocol":"gRPC","call":{"verb":"rpc","target":"AdService/GetAds"},"request":{"context_keys":[]},"requestSchema":{"ref":"microservices-demo:protos/demo.proto:247","quote":"message AdRequest {"},"description":"100 ms timeout; on error the page renders without an ad.","evidence":[{"ref":"microservices-demo:src/frontend/handlers.go:116","quote":"fe.chooseAd(r.Context(), []string{}, log)"},{"ref":"microservices-demo:src/frontend/rpc.go:123","quote":"GetAds(ctx, &pb.AdRequest{"},{"ref":"microservices-demo:src/frontend/handlers.go:530","quote":"log.WithField(\"error\", err).Warn(\"failed to retrieve ads\")"}]},{"from":"adservice","to":"frontend","kind":"res","label":"Random ads","protocol":"gRPC","response":{"ads":[{"redirect_url":"/product/2ZYFJ3GM2N","text":"Hairdryer for sale. 50% off."}]},"responseSchema":{"ref":"microservices-demo:protos/demo.proto:252","quote":"message AdResponse {"},"description":"With no context keys the ad service returns random ads; the frontend picks one at random.","evidence":[{"ref":"microservices-demo:src/adservice/src/main/java/hipstershop/AdService.java:105","quote":"allAds = service.getRandomAds();"},{"ref":"microservices-demo:src/frontend/handlers.go:533","quote":"return ads[rand.Intn(len(ads))]"}]},{"from":"frontend","to":"frontend","kind":"self","label":"Render the home template","protocol":"HTTP","payloadNote":"internal","evidence":[{"ref":"microservices-demo:src/frontend/handlers.go:110","quote":"templates.ExecuteTemplate(w, \"home\""}]}],"tests":[{"name":"TestListProducts","why":"Unit test of the ListProducts RPC the home page uses (run in CI)","ref":"microservices-demo:src/productcatalogservice/product_catalog_test.go:79","quote":"func TestListProducts(t *testing.T)"},{"name":"GetItem_NoAddItemBefore_EmptyCartReturned","why":"GetCart for a new session returns an empty cart","ref":"microservices-demo:src/cartservice/tests/CartServiceTests.cs:42","quote":"GetItem_NoAddItemBefore_EmptyCartReturned()"}]},{"id":"add-to-cart","title":"Add an item to the cart","tagline":"Product page to Redis","featured":true,"summary":"The shopper picks a quantity on a product page and presses \u003cb>Add to cart\u003c/b>. The browser posts a form to the frontend, which checks the product exists, asks the cart service to add it, and redirects to \u003ccode>/cart\u003c/code>. Default store: \u003cb>redis-cart\u003c/b>.","actors":["frontend","productcatalogservice","cartservice","redis-cart"],"steps":[{"from":"frontend","to":"frontend","kind":"self","label":"Receive the add-to-cart form","protocol":"HTTP","call":{"verb":"POST","target":"/cart"},"request":{"product_id":"OLJCESPC7Z","quantity":"2"},"description":"The product page form posts \u003ccode>product_id\u003c/code> and \u003ccode>quantity\u003c/code>. The frontend validates quantity 1 to 10 (else 422) and takes the shopper id from the \u003ccode>shop_session-id\u003c/code> cookie.","evidence":[{"ref":"microservices-demo:src/frontend/main.go:153","quote":"r.HandleFunc(baseUrl+\"/cart\", svc.addToCartHandler)"},{"ref":"microservices-demo:src/frontend/handlers.go:214","quote":"productID := r.FormValue(\"product_id\")"},{"ref":"microservices-demo:src/frontend/validator/validator.go:38","quote":"validate:\"required,gte=1,lte=10\""},{"ref":"microservices-demo:src/frontend/templates/product.html:57","quote":"name=\"product_id\""}]},{"from":"frontend","to":"productcatalogservice","kind":"req","label":"Check the product exists","protocol":"gRPC","call":{"verb":"rpc","target":"ProductCatalogService/GetProduct"},"request":{"id":"OLJCESPC7Z"},"requestSchema":{"ref":"microservices-demo:protos/demo.proto:93","quote":"message GetProductRequest {"},"evidence":[{"ref":"microservices-demo:src/frontend/handlers.go:225","quote":"fe.getProduct(r.Context(), payload.ProductID)"},{"ref":"microservices-demo:src/frontend/rpc.go:53","quote":"GetProduct(ctx, &pb.GetProductRequest{Id: id})"}]},{"from":"productcatalogservice","to":"frontend","kind":"res","label":"Product (or NotFound)","protocol":"gRPC","response":{"id":"OLJCESPC7Z","name":"Sunglasses","description":"Aviator sunglasses","picture":"/static/img/products/sunglasses.jpg","price_usd":{"currency_code":"USD","units":19,"nanos":990000000},"categories":["accessories"]},"responseSchema":{"ref":"microservices-demo:protos/demo.proto:77","quote":"message Product {"},"description":"An unknown id returns gRPC NotFound, which the frontend turns into a 500 page.","evidence":[{"ref":"microservices-demo:src/productcatalogservice/product_catalog.go:52","quote":"if req.Id == product.Id {"},{"ref":"microservices-demo:src/productcatalogservice/product_catalog.go:57","quote":"codes.NotFound, \"no product with ID %s\""}]},{"from":"frontend","to":"cartservice","kind":"req","label":"AddItem","protocol":"gRPC","call":{"verb":"rpc","target":"CartService/AddItem"},"request":{"user_id":"3f1c9a2e-7b4d-4e1a-9c0f-2d5e8b6a1f00","item":{"product_id":"OLJCESPC7Z","quantity":2}},"requestSchema":{"ref":"microservices-demo:src/cartservice/src/protos/Cart.proto:32","quote":"message AddItemRequest {"},"description":"\u003ccode>user_id\u003c/code> is the session cookie value. Cart service compiles its own \u003ccode>Cart.proto\u003c/code> (same messages as \u003ccode>protos/demo.proto\u003c/code>).","evidence":[{"ref":"microservices-demo:src/frontend/handlers.go:231","quote":"fe.insertCart(r.Context(), sessionID(r), p.GetId(), int32(payload.Quantity))"},{"ref":"microservices-demo:src/frontend/rpc.go:68","quote":"AddItem(ctx, &pb.AddItemRequest{"},{"ref":"microservices-demo:src/cartservice/src/services/CartService.cs:36","quote":"_cartStore.AddItemAsync(request.UserId, request.Item.ProductId, request.Item.Quantity)"}]},{"from":"cartservice","to":"redis-cart","kind":"req","label":"Read, update, write the cart","protocol":"Redis","payloadNote":"internal","requestSchema":{"ref":"microservices-demo:src/cartservice/src/protos/Cart.proto:45","quote":"message Cart {"},"description":"Reads the cart bytes stored under the user id, adds the item or increases its quantity, and writes the whole \u003ccode>Cart\u003c/code> protobuf back.","evidence":[{"ref":"microservices-demo:src/cartservice/src/cartstore/RedisCartStore.cs:40","quote":"var value = await _cache.GetAsync(userId);"},{"ref":"microservices-demo:src/cartservice/src/cartstore/RedisCartStore.cs:57","quote":"existingItem.Quantity += quantity;"},{"ref":"microservices-demo:src/cartservice/src/cartstore/RedisCartStore.cs:60","quote":"await _cache.SetAsync(userId, cart.ToByteArray());"}]},{"from":"cartservice","to":"frontend","kind":"res","label":"Empty","protocol":"gRPC","noPayload":true,"responseSchema":{"ref":"microservices-demo:src/cartservice/src/protos/Cart.proto:50","quote":"message Empty {}"},"description":"A storage error comes back as gRPC FailedPrecondition.","evidence":[{"ref":"microservices-demo:src/cartservice/src/services/CartService.cs:37","quote":"return Empty;"},{"ref":"microservices-demo:src/cartservice/src/cartstore/RedisCartStore.cs:64","quote":"StatusCode.FailedPrecondition"}]},{"from":"frontend","to":"frontend","kind":"self","label":"Redirect to the cart page","protocol":"HTTP","noPayload":true,"description":"Responds 302 with \u003ccode>location: /cart\u003c/code>; the browser then loads the cart page.","evidence":[{"ref":"microservices-demo:src/frontend/handlers.go:235","quote":"w.Header().Set(\"location\", baseUrl + \"/cart\")"},{"ref":"microservices-demo:src/frontend/handlers.go:236","quote":"w.WriteHeader(http.StatusFound)"}]}],"tests":[{"name":"AddItem_New_Inserted","why":"Calls cartservice AddItem over gRPC on an in-process test server with no REDIS_ADDR set, so Startup uses the in-memory cache, not Redis; covers only the cart part of this flow","ref":"microservices-demo:src/cartservice/tests/CartServiceTests.cs:117","quote":"public async Task AddItem_New_Inserted()"},{"name":"AddItem_ItemExists_Updated","why":"Adding the same product twice increases quantity","ref":"microservices-demo:src/cartservice/tests/CartServiceTests.cs:71","quote":"public async Task AddItem_ItemExists_Updated()"}]},{"id":"place-order","title":"Place an order","tagline":"Checkout form to order confirmation page","featured":true,"summary":"What happens when a shopper (or the load generator) submits the checkout form. The frontend validates the form and calls \u003cb>Checkout\u003c/b>, which reads the cart, prices items and shipping in the shopper's currency, charges the card (a fake charge), ships (a fake shipment), empties the cart and asks for a confirmation email (only logged). Cart, pricing, payment and shipping failures abort the order; emptying the cart and the email are best effort.","actors":["loadgenerator","frontend","checkoutservice","cartservice","productcatalogservice","currencyservice","shippingservice","paymentservice","emailservice","recommendationservice"],"steps":[{"from":"loadgenerator","to":"frontend","kind":"req","label":"Submit the checkout form","protocol":"HTTP","call":{"verb":"POST","target":"/cart/checkout"},"request":{"email":"jo@example.com","street_address":"1 Main St","zip_code":"94043","city":"Mountain View","state":"CA","country":"United States","credit_card_number":"4111111111111111","credit_card_expiration_month":"1","credit_card_expiration_year":"2030","credit_card_cvv":"123"},"requestSchema":{"ref":"microservices-demo:src/frontend/validator/validator.go:42","quote":"type PlaceOrderPayload struct {"},"description":"A form post (not JSON). The load generator sends the same fields a browser does. The frontend parses them and validates them (required fields, email format, card number format, month 1 to 12); a validation error returns HTTP 422 and checkout is never called.","evidence":[{"ref":"microservices-demo:src/loadgenerator/locustfile.py:61","quote":"l.client.post(\"/cart/checkout\", {"},{"ref":"microservices-demo:src/frontend/handlers.go:325","quote":"email         = r.FormValue(\"email\")"},{"ref":"microservices-demo:src/frontend/handlers.go:350","quote":"http.StatusUnprocessableEntity"}]},{"from":"frontend","to":"checkoutservice","kind":"req","label":"PlaceOrder","protocol":"gRPC","call":{"verb":"rpc","target":"hipstershop.CheckoutService/PlaceOrder"},"request":{"user_id":"\u003csession id>","user_currency":"EUR","address":{"street_address":"1 Main St","city":"Mountain View","state":"CA","country":"United States","zip_code":94043},"email":"jo@example.com","credit_card":{"credit_card_number":"4111111111111111","credit_card_cvv":123,"credit_card_expiration_year":2030,"credit_card_expiration_month":1}},"requestSchema":{"ref":"microservices-demo:protos/demo.proto:228","quote":"message PlaceOrderRequest {"},"description":"The user id is the frontend session id and the currency is the one the shopper picked. If PlaceOrder fails, the frontend shows an HTTP 500 page \"failed to complete the order\".","evidence":[{"ref":"microservices-demo:src/frontend/handlers.go:355","quote":"PlaceOrder(r.Context(), &pb.PlaceOrderRequest{"},{"ref":"microservices-demo:src/frontend/handlers.go:362","quote":"UserId:       sessionID(r),"},{"ref":"microservices-demo:src/frontend/handlers.go:372","quote":"\"failed to complete the order\"), http.StatusInternalServerError"}]},{"from":"checkoutservice","to":"cartservice","kind":"req","label":"GetCart","protocol":"gRPC","call":{"verb":"rpc","target":"hipstershop.CartService/GetCart"},"request":{"user_id":"\u003csession id>"},"response":{"user_id":"\u003csession id>","items":[{"product_id":"OLJCESPC7Z","quantity":2}]},"requestSchema":{"ref":"microservices-demo:protos/demo.proto:43","quote":"message GetCartRequest {"},"responseSchema":{"ref":"microservices-demo:protos/demo.proto:47","quote":"message Cart {"},"description":"Fatal: an error aborts the order with gRPC status Internal (\"cart failure\").","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:290","quote":"cartItems, err := cs.getUserCart(ctx, userID)"},{"ref":"microservices-demo:src/checkoutservice/main.go:292","quote":"fmt.Errorf(\"cart failure: %+v\", err)"},{"ref":"microservices-demo:src/checkoutservice/main.go:240","quote":"return nil, status.Errorf(codes.Internal, err.Error())"}]},{"from":"checkoutservice","to":"productcatalogservice","kind":"req","label":"GetProduct (per cart item)","protocol":"gRPC","call":{"verb":"rpc","target":"hipstershop.ProductCatalogService/GetProduct"},"request":{"id":"OLJCESPC7Z"},"response":{"id":"OLJCESPC7Z","name":"Sunglasses","price_usd":{"currency_code":"USD","units":19,"nanos":990000000},"...":"..."},"requestSchema":{"ref":"microservices-demo:protos/demo.proto:93","quote":"message GetProductRequest {"},"responseSchema":{"ref":"microservices-demo:protos/demo.proto:77","quote":"message Product {"},"description":"Called once for each cart item, one after another, each followed by the currency conversion in the next step. Fatal: an error aborts the order (Internal).","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:344","quote":"cl.GetProduct(ctx, &pb.GetProductRequest{Id: item.GetProductId()})"},{"ref":"microservices-demo:src/checkoutservice/main.go:346","quote":"fmt.Errorf(\"failed to get product #%q\", item.GetProductId())"}]},{"from":"checkoutservice","to":"currencyservice","kind":"req","label":"Convert item price (per cart item)","protocol":"gRPC","call":{"verb":"rpc","target":"hipstershop.CurrencyService/Convert"},"request":{"from":{"currency_code":"USD","units":19,"nanos":990000000},"to_code":"EUR"},"response":{"currency_code":"EUR","units":17,"nanos":682441398},"requestSchema":{"ref":"microservices-demo:protos/demo.proto:168","quote":"message CurrencyConversionRequest {"},"responseSchema":{"ref":"microservices-demo:protos/demo.proto:146","quote":"message Money {"},"description":"Fatal: an error aborts the order (Internal). The conversion call uses \u003ccode>context.TODO()\u003c/code>, not the request context.","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:348","quote":"price, err := cs.convertCurrency(ctx, product.GetPriceUsd(), userCurrency)"},{"ref":"microservices-demo:src/checkoutservice/main.go:360","quote":"Convert(context.TODO(), &pb.CurrencyConversionRequest{"}]},{"from":"checkoutservice","to":"shippingservice","kind":"req","label":"GetQuote","protocol":"gRPC","call":{"verb":"rpc","target":"hipstershop.ShippingService/GetQuote"},"request":{"address":{"street_address":"1 Main St","city":"Mountain View","state":"CA","country":"United States","zip_code":94043},"items":[{"product_id":"OLJCESPC7Z","quantity":2}]},"response":{"cost_usd":{"currency_code":"USD","units":8,"nanos":990000000}},"requestSchema":{"ref":"microservices-demo:protos/demo.proto:112","quote":"message GetQuoteRequest {"},"responseSchema":{"ref":"microservices-demo:protos/demo.proto:117","quote":"message GetQuoteResponse {"},"description":"The shipping service returns a flat 8.99 USD for any non-empty cart. Fatal: an error aborts the order (Internal, \"shipping quote failure\").","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:298","quote":"shippingUSD, err := cs.quoteShipping(ctx, address, cartItems)"},{"ref":"microservices-demo:src/checkoutservice/main.go:300","quote":"fmt.Errorf(\"shipping quote failure: %+v\", err)"},{"ref":"microservices-demo:src/shippingservice/quote.go:38","quote":"return CreateQuoteFromFloat(8.99)"}]},{"from":"checkoutservice","to":"currencyservice","kind":"req","label":"Convert shipping cost","protocol":"gRPC","call":{"verb":"rpc","target":"hipstershop.CurrencyService/Convert"},"request":{"from":{"currency_code":"USD","units":8,"nanos":990000000},"to_code":"EUR"},"response":{"currency_code":"EUR","units":7,"nanos":952233525},"requestSchema":{"ref":"microservices-demo:protos/demo.proto:168","quote":"message CurrencyConversionRequest {"},"responseSchema":{"ref":"microservices-demo:protos/demo.proto:146","quote":"message Money {"},"description":"Fatal: an error aborts the order (Internal).","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:302","quote":"shippingPrice, err := cs.convertCurrency(ctx, shippingUSD, userCurrency)"},{"ref":"microservices-demo:src/checkoutservice/main.go:304","quote":"failed to convert shipping cost to currency"}]},{"from":"checkoutservice","to":"checkoutservice","kind":"self","label":"Total the order","noPayload":true,"description":"Adds the localised shipping cost and price times quantity for every item, in the shopper's currency, using the local \u003ccode>money\u003c/code> package.","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:246","quote":"total = money.Must(money.Sum(total, *prep.shippingCostLocalized))"},{"ref":"microservices-demo:src/checkoutservice/main.go:248","quote":"money.MultiplySlow(*it.Cost, uint32(it.GetItem().GetQuantity()))"}]},{"from":"checkoutservice","to":"paymentservice","kind":"req","label":"Charge the card","protocol":"gRPC","call":{"verb":"rpc","target":"hipstershop.PaymentService/Charge"},"request":{"amount":{"currency_code":"EUR","units":43,"nanos":317116321},"credit_card":{"credit_card_number":"4111111111111111","credit_card_cvv":123,"credit_card_expiration_year":2030,"credit_card_expiration_month":1}},"response":{"transaction_id":"5d0c1f3e-7a2b-4c9d-8e1f-2a3b4c5d6e7f"},"requestSchema":{"ref":"microservices-demo:src/paymentservice/proto/demo.proto:186","quote":"message ChargeRequest {"},"responseSchema":{"ref":"microservices-demo:src/paymentservice/proto/demo.proto:191","quote":"message ChargeResponse {"},"description":"No real charge: the payment service validates the card number, accepts only VISA or MasterCard, rejects expired cards and returns a random UUID. Fatal: a rejection or error aborts the order (Internal, \"failed to charge card\"). The schema shown is the proto copy the payment service loads at run time.","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:252","quote":"txID, err := cs.chargeCard(ctx, &total, req.CreditCard)"},{"ref":"microservices-demo:src/checkoutservice/main.go:254","quote":"\"failed to charge card: %+v\""},{"ref":"microservices-demo:src/paymentservice/charge.js:85","quote":"return { transaction_id: uuidv4() };"},{"ref":"microservices-demo:src/paymentservice/server.js:28","quote":"this.loadProto(path.join(protoRoot, 'demo.proto'))"}]},{"from":"checkoutservice","to":"shippingservice","kind":"req","label":"ShipOrder","protocol":"gRPC","call":{"verb":"rpc","target":"hipstershop.ShippingService/ShipOrder"},"request":{"address":{"street_address":"1 Main St","city":"Mountain View","state":"CA","country":"United States","zip_code":94043},"items":[{"product_id":"OLJCESPC7Z","quantity":2}]},"response":{"tracking_id":"QX-28314-144712093"},"requestSchema":{"ref":"microservices-demo:protos/demo.proto:121","quote":"message ShipOrderRequest {"},"responseSchema":{"ref":"microservices-demo:protos/demo.proto:126","quote":"message ShipOrderResponse {"},"description":"No real shipment: the shipping service makes up a random tracking id. Fatal: an error returns gRPC status Unavailable, after the card has already been \"charged\"; nothing reverses the charge.","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:258","quote":"shippingTrackingID, err := cs.shipOrder(ctx, req.Address, prep.cartItems)"},{"ref":"microservices-demo:src/checkoutservice/main.go:260","quote":"status.Errorf(codes.Unavailable, \"shipping error: %+v\", err)"},{"ref":"microservices-demo:src/shippingservice/main.go:147","quote":"id := CreateTrackingId(baseAddress)"}]},{"from":"checkoutservice","to":"cartservice","kind":"req","label":"EmptyCart (result ignored)","protocol":"gRPC","call":{"verb":"rpc","target":"hipstershop.CartService/EmptyCart"},"request":{"user_id":"\u003csession id>"},"response":{},"requestSchema":{"ref":"microservices-demo:protos/demo.proto:39","quote":"message EmptyCartRequest {"},"responseSchema":{"ref":"microservices-demo:protos/demo.proto:52","quote":"message Empty {}"},"description":"Not fatal: the returned error is thrown away, so the order still succeeds if the cart could not be emptied.","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:263","quote":"_ = cs.emptyUserCart(ctx, req.UserId)"}]},{"from":"checkoutservice","to":"emailservice","kind":"req","label":"SendOrderConfirmation (failure only logged)","protocol":"gRPC","call":{"verb":"rpc","target":"hipstershop.EmailService/SendOrderConfirmation"},"request":{"email":"jo@example.com","order":{"order_id":"\u003cuuid>","shipping_tracking_id":"QX-28314-144712093","shipping_cost":{"currency_code":"EUR","units":7,"nanos":952233525},"shipping_address":{"...":"..."},"items":[{"item":{"product_id":"OLJCESPC7Z","quantity":2},"cost":{"currency_code":"EUR","units":17,"nanos":682441398}}]}},"response":{},"requestSchema":{"ref":"microservices-demo:protos/demo.proto:216","quote":"message SendOrderConfirmationRequest {"},"responseSchema":{"ref":"microservices-demo:protos/demo.proto:52","quote":"message Empty {}"},"description":"Not fatal: an error is only logged as a warning. The email service runs in dummy mode and only logs that a confirmation was requested; no email is sent.","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:273","quote":"cs.sendOrderConfirmation(ctx, req.Email, orderResult)"},{"ref":"microservices-demo:src/checkoutservice/main.go:274","quote":"log.Warnf(\"failed to send order confirmation to %q: %+v\""},{"ref":"microservices-demo:src/emailservice/email_server.py:110","quote":"A request to send order confirmation email to {} has been received."}]},{"from":"checkoutservice","to":"frontend","kind":"res","label":"PlaceOrderResponse","protocol":"gRPC","response":{"order":{"order_id":"a3b1c2d4-0f1e-11ef-9a2b-0242ac120002","shipping_tracking_id":"QX-28314-144712093","shipping_cost":{"currency_code":"EUR","units":7,"nanos":952233525},"shipping_address":{"...":"..."},"items":[{"item":{"product_id":"OLJCESPC7Z","quantity":2},"cost":{"currency_code":"EUR","units":17,"nanos":682441398}}]}},"responseSchema":{"ref":"microservices-demo:protos/demo.proto:237","quote":"message PlaceOrderResponse {"},"description":"The order id is a time-based UUID made by checkout. The response carries no total and no payment transaction id; the transaction id is only logged.","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:266","quote":"OrderId:            orderID.String(),"},{"ref":"microservices-demo:src/checkoutservice/main.go:256","quote":"payment went through (transaction_id: %s)"},{"ref":"microservices-demo:src/checkoutservice/main.go:278","quote":"resp := &pb.PlaceOrderResponse{Order: orderResult}"}]},{"from":"frontend","to":"recommendationservice","kind":"req","label":"ListRecommendations (error ignored)","protocol":"gRPC","call":{"verb":"rpc","target":"hipstershop.RecommendationService/ListRecommendations"},"request":{"user_id":"\u003csession id>","product_ids":[]},"response":{"product_ids":["66VCHSJNUP","9SIQT8TOJO"]},"requestSchema":{"ref":"microservices-demo:protos/demo.proto:60","quote":"message ListRecommendationsRequest {"},"responseSchema":{"ref":"microservices-demo:protos/demo.proto:65","quote":"message ListRecommendationsResponse {"},"description":"For the \"you may also like\" strip on the confirmation page. Not fatal: the error is discarded, and a failure in the GetProduct lookups that follow also empties the list.","evidence":[{"ref":"microservices-demo:src/frontend/handlers.go:378","quote":"recommendations, _ := fe.getRecommendations(r.Context(), sessionID(r), nil)"},{"ref":"microservices-demo:src/frontend/rpc.go:100","quote":"ListRecommendations(ctx,"}]},{"from":"frontend","to":"productcatalogservice","kind":"req","label":"GetProduct (per recommended id)","protocol":"gRPC","call":{"verb":"rpc","target":"hipstershop.ProductCatalogService/GetProduct"},"request":{"id":"66VCHSJNUP"},"response":{"id":"66VCHSJNUP","name":"Tank Top","price_usd":{"currency_code":"USD","units":18,"nanos":990000000},"...":"..."},"requestSchema":{"ref":"microservices-demo:protos/demo.proto:93","quote":"message GetProductRequest {"},"responseSchema":{"ref":"microservices-demo:protos/demo.proto:77","quote":"message Product {"},"description":"Called once for each recommended id, one after another (here also for 9SIQT8TOJO). Any error drops all recommendations: the whole lookup returns an error, which the confirmation page ignores. At most four products are kept for the page.","evidence":[{"ref":"microservices-demo:src/frontend/rpc.go:107","quote":"p, err := fe.getProduct(ctx, v)"},{"ref":"microservices-demo:src/frontend/rpc.go:109","quote":"failed to get recommended product info"},{"ref":"microservices-demo:src/frontend/rpc.go:53","quote":"GetProduct(ctx, &pb.GetProductRequest{Id: id})"},{"ref":"microservices-demo:src/frontend/rpc.go:114","quote":"out = out[:4]"}]},{"from":"frontend","to":"currencyservice","kind":"req","label":"GetSupportedCurrencies","protocol":"gRPC","call":{"verb":"rpc","target":"hipstershop.CurrencyService/GetSupportedCurrencies"},"request":{},"response":{"currency_codes":["EUR","USD","JPY","BGN","CZK","..."]},"requestSchema":{"ref":"microservices-demo:protos/demo.proto:52","quote":"message Empty {}"},"responseSchema":{"ref":"microservices-demo:protos/demo.proto:163","quote":"message GetSupportedCurrenciesResponse {"},"description":"The response carries every code in the rates file; the frontend keeps only its whitelist (USD, EUR, CAD, JPY, GBP, TRY). Fatal for the page only: an error shows an HTTP 500 page even though the order was already placed. Before this call the frontend recomputes the total paid itself from shipping cost and items.","evidence":[{"ref":"microservices-demo:src/frontend/handlers.go:386","quote":"currencies, err := fe.getCurrencies(r.Context())"},{"ref":"microservices-demo:src/frontend/handlers.go:388","quote":"\"could not retrieve currencies\"), http.StatusInternalServerError"},{"ref":"microservices-demo:src/frontend/handlers.go:380","quote":"totalPaid := *order.GetOrder().GetShippingCost()"},{"ref":"microservices-demo:src/currencyservice/server.js:131","quote":"callback(null, {currency_codes: Object.keys(data)});"},{"ref":"microservices-demo:src/frontend/rpc.go:38","quote":"whitelistedCurrencies[c]"}]},{"from":"frontend","to":"loadgenerator","kind":"res","label":"Order confirmation page","protocol":"HTTP","payloadNote":"unknown","response":"HTML page rendered from the \"order\" template (order, total_paid, recommendations, currencies)","description":"The frontend renders the order confirmation HTML page.","evidence":[{"ref":"microservices-demo:src/frontend/handlers.go:392","quote":"templates.ExecuteTemplate(w, \"order\""},{"ref":"microservices-demo:src/frontend/handlers.go:396","quote":"\"total_paid\":      &totalPaid,"}]}],"tests":[{"name":"smoke test job","why":"Deploys the whole app and fails if the load generator, which includes checkout in its task mix, reports any request errors","ref":"microservices-demo:.github/workflows/ci-main.yaml:147","quote":"ERROR_COUNT=$(kubectl logs -l app=loadgenerator"}]}],"facts":[{"group":"How it is built","items":[{"text":"Each service is its own container image built by Skaffold from its folder under \u003ccode>src/\u003c/code> (\u003ccode>src/cartservice/src\u003c/code> for the cart), for both amd64 and arm64.","evidence":[{"ref":"microservices-demo:skaffold.yaml:20","quote":"platforms: [\"linux/amd64\", \"linux/arm64\"]"},{"ref":"microservices-demo:skaffold.yaml:47","quote":"context: src/frontend"},{"ref":"microservices-demo:skaffold.yaml:43","quote":"context: src/cartservice/src"}]},{"text":"The read path is polyglot: frontend and product catalog in Go, cart in C# (.NET), currency in Node.js, ads in Java, recommendations and the shopping assistant in Python.","evidence":[{"ref":"microservices-demo:src/frontend/Dockerfile:18","quote":"golang:1.27.0-alpine"},{"ref":"microservices-demo:src/cartservice/src/Dockerfile:19","quote":"mcr.microsoft.com/dotnet/sdk"},{"ref":"microservices-demo:src/currencyservice/Dockerfile:18","quote":"node:24.20.0-alpine"},{"ref":"microservices-demo:src/adservice/Dockerfile:18","quote":"eclipse-temurin:25.0.4_7-jdk-noble"},{"ref":"microservices-demo:src/recommendationservice/Dockerfile:18","quote":"python:3.14.7-alpine"}]},{"text":"\u003ccode>protos/demo.proto\u003c/code> (package \u003ccode>hipstershop\u003c/code>) is the shared gRPC contract. The Go services and the Python gRPC services (email, recommendation) generate code from it; adservice copies it in and generates code with Gradle; the currency and payment services copy it and load it at run time. The cart service is the exception and compiles its own \u003ccode>Cart.proto\u003c/code>.","evidence":[{"ref":"microservices-demo:protos/demo.proto:17","quote":"package hipstershop;"},{"ref":"microservices-demo:src/checkoutservice/genproto.sh:20","quote":"protodir=../../protos"},{"ref":"microservices-demo:src/emailservice/genproto.sh:19","quote":"python -m grpc_tools.protoc -I../../protos"},{"ref":"microservices-demo:src/recommendationservice/genproto.sh:24","quote":"../../protos/demo.proto"},{"ref":"microservices-demo:src/adservice/genproto.sh:21","quote":"cp ../../protos/demo.proto src/main/proto"},{"ref":"microservices-demo:src/adservice/build.gradle:2","quote":"id 'com.google.protobuf'"},{"ref":"microservices-demo:src/currencyservice/genproto.sh:21","quote":"cp -r ../../protos/* ./proto"},{"ref":"microservices-demo:src/currencyservice/server.js:80","quote":"path.join(__dirname, './proto/demo.proto')"},{"ref":"microservices-demo:src/paymentservice/server.js:28","quote":"this.loadProto(path.join(protoRoot, 'demo.proto'))"},{"ref":"microservices-demo:src/cartservice/src/cartservice.csproj:17","quote":"Include=\"protos\\Cart.proto\""}]},{"text":"ci-main runs Go unit tests for shippingservice and productcatalogservice and \u003ccode>dotnet test\u003c/code> for the cart service; ci-pr runs the same plus the frontend's \u003ccode>validator\u003c/code> package. No currency, ad, recommendation, checkout or email tests run in CI.","evidence":[{"ref":"microservices-demo:.github/workflows/ci-main.yaml:48","quote":"for SERVICE in \"shippingservice\" \"productcatalogservice\"; do"},{"ref":"microservices-demo:.github/workflows/ci-main.yaml:57","quote":"dotnet test src/cartservice/"},{"ref":"microservices-demo:.github/workflows/ci-pr.yaml:54","quote":"\"shippingservice\" \"productcatalogservice\" \"frontend/validator\""}]},{"text":"The order path mixes languages: checkout and shipping are Go (distroless images), payment is Node.js, email and the load generator are Python (Locust).","evidence":[{"ref":"microservices-demo:src/checkoutservice/Dockerfile:18","quote":"golang:1.27.0-alpine"},{"ref":"microservices-demo:src/shippingservice/Dockerfile:32","quote":"FROM gcr.io/distroless/static"},{"ref":"microservices-demo:src/paymentservice/Dockerfile:18","quote":"node:24.20.0-alpine"},{"ref":"microservices-demo:src/emailservice/Dockerfile:18","quote":"python:3.14.7-alpine"},{"ref":"microservices-demo:src/loadgenerator/Dockerfile:18","quote":"python:3.14.7-alpine"}]}]},{"group":"Default deployment vs optional parts","items":[{"text":"The default deployment is \u003ccode>kubernetes-manifests\u003c/code>, which Skaffold's \u003ccode>app\u003c/code> config deploys: the 10 core services plus in-cluster Redis. Its kustomization comments out the load generator (Skaffold deploys it through a separate \u003ccode>loadgenerator\u003c/code> config) and lists 10 of the 15 kustomize components (including shopping-assistant), all commented out.","evidence":[{"ref":"microservices-demo:kubernetes-manifests/kustomization.yaml:24","quote":"# - loadgenerator.yaml"},{"ref":"microservices-demo:kubernetes-manifests/kustomization.yaml:29","quote":"# components:"},{"ref":"microservices-demo:kubernetes-manifests/kustomization.yaml:35","quote":"# - ../kustomize/components/shopping-assistant"},{"ref":"microservices-demo:skaffold.yaml:58","quote":"- kubernetes-manifests"},{"ref":"microservices-demo:skaffold.yaml:113","quote":"- ./kubernetes-manifests/loadgenerator.yaml"}]},{"text":"The frontend is the only service exposed outside the cluster, through a LoadBalancer Service \u003ccode>frontend-external\u003c/code>.","evidence":[{"ref":"microservices-demo:kubernetes-manifests/frontend.yaml:126","quote":"name: frontend-external"},{"ref":"microservices-demo:kubernetes-manifests/frontend.yaml:130","quote":"type: LoadBalancer"}]},{"text":"Backend addresses are plain Kubernetes Service names in env vars; the frontend panics at start-up if any of them, including \u003ccode>SHOPPING_ASSISTANT_SERVICE_ADDR\u003c/code>, is unset.","evidence":[{"ref":"microservices-demo:src/frontend/main.go:220","quote":"panic(fmt.Sprintf(\"environment variable %q not set\", envKey))"},{"ref":"microservices-demo:src/frontend/main.go:139","quote":"\"SHOPPING_ASSISTANT_SERVICE_ADDR\""}]},{"text":"The cart store is picked from env vars at start-up: \u003ccode>REDIS_ADDR\u003c/code> (default, \u003ccode>redis-cart:6379\u003c/code>), then Spanner, then AlloyDB, else an in-process memory cache.","evidence":[{"ref":"microservices-demo:src/cartservice/src/Startup.cs:34","quote":"if (!string.IsNullOrEmpty(redisAddress))"},{"ref":"microservices-demo:src/cartservice/src/Startup.cs:54","quote":"services.AddDistributedMemoryCache();"},{"ref":"microservices-demo:kubernetes-manifests/cartservice.yaml:51","quote":"value: \"redis-cart:6379\""}]},{"text":"The \u003ccode>memorystore\u003c/code>, \u003ccode>spanner\u003c/code> and \u003ccode>alloydb\u003c/code> kustomize components each delete the in-cluster \u003ccode>redis-cart\u003c/code>; memorystore points \u003ccode>REDIS_ADDR\u003c/code> at a managed Redis instead.","evidence":[{"ref":"microservices-demo:kustomize/components/memorystore/kustomization.yaml:31","quote":"value: \"REDIS_CONNECTION_STRING\""},{"ref":"microservices-demo:kustomize/components/memorystore/kustomization.yaml:38","quote":"$patch: delete"},{"ref":"microservices-demo:kustomize/components/spanner/kustomization.yaml:48","quote":"$patch: delete"},{"ref":"microservices-demo:kustomize/components/alloydb/kustomization.yaml:92","quote":"$patch: delete"}]},{"text":"The \u003ccode>alloydb\u003c/code> component also switches the product catalogue from \u003ccode>products.json\u003c/code> to AlloyDB, not just the cart.","evidence":[{"ref":"microservices-demo:kustomize/components/alloydb/kustomization.yaml:57","quote":"name: productcatalogservice"},{"ref":"microservices-demo:kustomize/components/alloydb/kustomization.yaml:64","quote":"- name: ALLOYDB_CLUSTER_NAME"}]},{"text":"The shopping assistant is opt-in: the \u003ccode>shopping-assistant\u003c/code> component adds its Deployment and sets \u003ccode>ENABLE_ASSISTANT=true\u003c/code> on the frontend, which only shows the assistant link in the header. The Helm chart cannot deploy it.","evidence":[{"ref":"microservices-demo:kustomize/components/shopping-assistant/kustomization.yaml:31","quote":"- name: ENABLE_ASSISTANT"},{"ref":"microservices-demo:src/frontend/handlers.go:559","quote":"\"assistant_enabled\": assistantEnabled,"},{"ref":"microservices-demo:helm-chart/values.yaml:219","quote":"create: false"}]},{"text":"Helm defaults the cart store to in-cluster Redis (\u003ccode>cartDatabase.type: redis\u003c/code>, \u003ccode>inClusterRedis.create: true\u003c/code>).","evidence":[{"ref":"microservices-demo:helm-chart/values.yaml:202","quote":"type: redis"},{"ref":"microservices-demo:helm-chart/values.yaml:205","quote":"create: true"}]},{"text":"Setting \u003ccode>ENABLE_SINGLE_SHARED_SESSION=true\u003c/code> on the frontend makes every new visitor share one hard-coded session id (and so one cart).","evidence":[{"ref":"microservices-demo:src/frontend/middleware.go:90","quote":"os.Getenv(\"ENABLE_SINGLE_SHARED_SESSION\") == \"true\""},{"ref":"microservices-demo:src/frontend/middleware.go:91","quote":"Hard coded user id, shared across sessions"}]}]},{"group":"How it ships","items":[{"text":"Plain Kubernetes manifests live in \u003ccode>kubernetes-manifests/\u003c/code>, one file per service, tied together by a kustomization. That kustomization leaves the load generator out (commented), because skaffold deploys it as a separate module.","evidence":[{"ref":"microservices-demo:kubernetes-manifests/kustomization.yaml:20","quote":"- checkoutservice.yaml"},{"ref":"microservices-demo:kubernetes-manifests/kustomization.yaml:24","quote":"# - loadgenerator.yaml # During development, the loadgenerator module"},{"ref":"microservices-demo:skaffold.yaml:99","quote":"name: loadgenerator"},{"ref":"microservices-demo:skaffold.yaml:113","quote":"- ./kubernetes-manifests/loadgenerator.yaml"}]},{"text":"Skaffold builds every service image from its folder under \u003ccode>src/\u003c/code>, tags the \u003ccode>app\u003c/code> images with the git commit and deploys with kubectl: the \u003ccode>app\u003c/code> config renders the \u003ccode>kubernetes-manifests\u003c/code> kustomization, and a second \u003ccode>loadgenerator\u003c/code> config applies \u003ccode>kubernetes-manifests/loadgenerator.yaml\u003c/code> as raw YAML.","evidence":[{"ref":"microservices-demo:skaffold.yaml:37","quote":"context: src/checkoutservice"},{"ref":"microservices-demo:skaffold.yaml:51","quote":"gitCommit: {}"},{"ref":"microservices-demo:skaffold.yaml:58","quote":"- kubernetes-manifests"},{"ref":"microservices-demo:skaffold.yaml:60","quote":"kubectl: {}"},{"ref":"microservices-demo:skaffold.yaml:112","quote":"rawYaml:"},{"ref":"microservices-demo:skaffold.yaml:113","quote":"- ./kubernetes-manifests/loadgenerator.yaml"}]},{"text":"Two other ways to deploy exist: a kustomize base with optional components (all commented out by default, the base includes the load generator), and a Helm chart \u003ccode>onlineboutique\u003c/code> with a \u003ccode>create\u003c/code> switch per service.","evidence":[{"ref":"microservices-demo:kustomize/kustomization.yaml:18","quote":"- base"},{"ref":"microservices-demo:kustomize/base/kustomization.yaml:24","quote":"- loadgenerator.yaml"},{"ref":"microservices-demo:helm-chart/Chart.yaml:16","quote":"name: onlineboutique"},{"ref":"microservices-demo:helm-chart/values.yaml:84","quote":"checkoutService:"}]}]},{"group":"How services find each other","items":[{"text":"Services find each other through \u003ccode>*_SERVICE_ADDR\u003c/code> environment variables set to Kubernetes Service names and ports; checkout panics at start-up if any of its six is missing.","evidence":[{"ref":"microservices-demo:src/checkoutservice/main.go:205","quote":"panic(fmt.Sprintf(\"environment variable %q not set\", envKey))"},{"ref":"microservices-demo:src/checkoutservice/main.go:116","quote":"mustMapEnv(&svc.paymentSvcAddr, \"PAYMENT_SERVICE_ADDR\")"},{"ref":"microservices-demo:kubernetes-manifests/checkoutservice.yaml:61","quote":"- name: PAYMENT_SERVICE_ADDR"},{"ref":"microservices-demo:kubernetes-manifests/checkoutservice.yaml:62","quote":"value: \"paymentservice:50051\""}]}]},{"group":"How it is tested","items":[{"text":"CI on pushes to main and release branches runs Go unit tests for shipping and product catalog plus the C# cart tests, then deploys to a GKE cluster with skaffold and fails if the load generator logs any errors.","evidence":[{"ref":"microservices-demo:.github/workflows/ci-main.yaml:48","quote":"for SERVICE in \"shippingservice\" \"productcatalogservice\"; do"},{"ref":"microservices-demo:.github/workflows/ci-main.yaml:57","quote":"dotnet test src/cartservice/"},{"ref":"microservices-demo:.github/workflows/ci-main.yaml:112","quote":"skaffold run --default-repo="},{"ref":"microservices-demo:.github/workflows/ci-main.yaml:148","quote":"if [[ \"$ERROR_COUNT\" -gt \"0\" ]]; then"}]},{"text":"Separate workflows lint and render the Helm chart and build the kustomize variants.","evidence":[{"ref":"microservices-demo:.github/workflows/helm-chart-ci.yaml:35","quote":"helm lint --strict"},{"ref":"microservices-demo:.github/workflows/kustomize-build-ci.yaml:44","quote":"kustomize build $test"}]}]}],"mapIntro":"\u003cdiv class=\"empty-hint\">\n  \u003ch2>How the system fits together\u003c/h2>\n  \u003cp>Select any box to see what it does, what it calls, what calls it and where that is in the code. Arrows leaving the selected box are blue; arrows coming in are pink.\u003c/p>\n  \u003cp>Open \u003cb>Flows\u003c/b> to step through how a request travels between components, with the request and response at each step.\u003c/p>\n\u003c/div>\n","about":"\u003ch2>How to read this map\u003c/h2>\n\u003cp>This page describes how the main components of the system fit together and how they talk to each other. Every component, connection and flow step has evidence: a link to the line of code that supports it, plus a short quote from that line. The date in the header is when the code was last checked.\u003c/p>\n\u003cp>When the code could not confirm something, it was left out. The map is deliberately smaller than the system: it covers what a newcomer needs, not every class or job.\u003c/p>\n\n\u003ch3>Reading a flow\u003c/h3>\n\u003cdiv class=\"legend-row\">\u003csvg width=\"46\" height=\"12\" aria-hidden=\"true\">\u003cline x1=\"2\" y1=\"6\" x2=\"40\" y2=\"6\" style=\"stroke:var(--back);stroke-width:2\"/>\u003cpath d=\"M38,2 L44,6 L38,10z\" style=\"fill:var(--back)\"/>\u003c/svg>\u003cspan>\u003cb>Request\u003c/b>: a call that waits for an answer (HTTP, gRPC, SQL and so on).\u003c/span>\u003c/div>\n\u003cdiv class=\"legend-row\">\u003csvg width=\"46\" height=\"12\" aria-hidden=\"true\">\u003cline x1=\"2\" y1=\"6\" x2=\"40\" y2=\"6\" style=\"stroke:var(--lay);stroke-width:2;stroke-dasharray:5 3\"/>\u003cpath d=\"M38,2 L44,6 L38,10z\" style=\"fill:var(--lay)\"/>\u003c/svg>\u003cspan>\u003cb>Response\u003c/b>: the answer to an earlier request.\u003c/span>\u003c/div>\n\u003cdiv class=\"legend-row\">\u003csvg width=\"46\" height=\"12\" aria-hidden=\"true\">\u003cline x1=\"2\" y1=\"6\" x2=\"40\" y2=\"6\" style=\"stroke:var(--async);stroke-width:2;stroke-dasharray:2 3\"/>\u003cpath d=\"M38,2 L44,6 L38,10z\" style=\"fill:var(--async)\"/>\u003c/svg>\u003cspan>\u003cb>Async\u003c/b>: a message on a queue or topic, or a call nobody waits for.\u003c/span>\u003c/div>\n\u003cp>Use the arrow keys to move between steps. Payload examples use the real field names from the code, with made-up values; \u003ccode>...\u003c/code> marks fields left out, and secrets are shown as placeholders such as \u003ccode>&lt;token&gt;\u003c/code>. A \u003cb>Full definition\u003c/b> link opens the class, schema or proto that defines the payload.\u003c/p>\n\n\u003ch3>Links you can share\u003c/h3>\n\u003cp>Every component, flow and step has its own address. Use \u003cb>Copy link\u003c/b>, or the address bar: \u003ccode>#node.&lt;id&gt;\u003c/code> opens a component, \u003ccode>#flow.&lt;id&gt;.&lt;step&gt;\u003c/code> opens a flow step and \u003ccode>#mapflow.&lt;id&gt;\u003c/code> shows a flow on the map.\u003c/p>\n\n\u003ch3>How this map is verified\u003c/h3>\n\u003cp>Each evidence item is a reference, \u003ccode>repo:path:line\u003c/code>, plus a quote copied from that line. The links open the code at the exact commit that was checked, so they keep working after the code moves on.\u003c/p>\n\u003cp>The map was built in three steps. First, claims were drafted from the code. Then other agents, which had not seen the draft, answered neutral questions about each claim from the code alone (Chain of Verification), and a separate reviewer tried to prove each claim wrong. Claims that did not survive were removed. Finally, a script checks every quote mechanically against each repository's default branch. Anyone can run that check again; it fails when the code changes under the map.\u003c/p>\n\u003cp>Links under \u003cb>Related links\u003c/b> point to documents, dashboards or tickets. They are not evidence and are not checked.\u003c/p>\n"};
+</script>
+<script>
+(() => {
+const D = window.ARCHMAP;
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const strip = s => String(s ?? '').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+document.title = D.meta.title; $('#mapTitle').textContent = D.meta.title;
+const NODE = Object.fromEntries(D.nodes.map(n => [n.id, n]));
+const LAYER = Object.fromEntries(D.layers.map(l => [l.id, l]));
+const VIEWS = ['map', 'flows', 'components', 'about'];
+const narrow = () => matchMedia('(max-width: 1000px)').matches;
+const store = { get(k) { try { return localStorage.getItem('archmap:' + D.meta.key + ':' + k); } catch { return null; } },
+                set(k, v) { try { localStorage.setItem('archmap:' + D.meta.key + ':' + k, v); } catch {} } };
+const announce = msg => { const l = $('#live'); l.textContent = ''; setTimeout(() => { l.textContent = msg; }, 30); };
+const setHash = h => { if (location.hash.slice(1) !== h) history.replaceState(null, '', '#' + h); };
+const canvas = document.createElement('canvas').getContext('2d');
+function fit(text, px, font) { canvas.font = font; if (canvas.measureText(text).width <= px) return text;
+  let lo = 0, hi = text.length; while (lo < hi) { const mid = (lo + hi + 1) >> 1; canvas.measureText(text.slice(0, mid) + '…').width <= px ? lo = mid : hi = mid - 1; }
+  return lo > 0 ? text.slice(0, lo) + '…' : ''; }
+async function copyText(text, btn, label = 'Copy') {
+  const done = ok => { btn.textContent = ok ? 'Copied' : 'Press Ctrl+C'; setTimeout(() => btn.textContent = label, 1400); };
+  try { await navigator.clipboard.writeText(text); done(true); } catch { done(false); }
+}
+
+$('#verified').innerHTML = `<b>&#10003; Verified</b> against each repo's default branch, ${esc(D.meta.verifiedOn)}`;
+$('#verified').title = `${D.meta.refCount} evidence references, each checked against the code`;
+
+/* ---------- theme ---------- */
+function themeNow() { return document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); }
+function paintThemeBtn() { const next = themeNow() === 'dark' ? 'light' : 'dark'; const b = $('#themeBtn'); b.textContent = next === 'dark' ? 'Dark mode' : 'Light mode'; b.setAttribute('aria-label', `Switch to ${next} mode`); }
+const savedTheme = store.get('theme'); if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+paintThemeBtn();
+$('#themeBtn').onclick = () => { const next = themeNow() === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = next; store.set('theme', next); paintThemeBtn(); };
+
+/* ---------- evidence ---------- */
+function evHref(ref) {
+  const m = /^([^:]+):(.+?)(?::(\d+))?$/.exec(ref || ''); if (!m) return null;
+  const [, repo, path, line] = m;
+  const r = D.meta.repos[repo]; if (!r || !r.file) return null;
+  return r.file.replace('{path}', path.split('/').map(encodeURIComponent).join('/')).replace('{line}', line || '1');
+}
+function evLink(e) {
+  const m = /^([^:]+):(.+?)(?::(\d+))?$/.exec(e.ref || ''), href = evHref(e.ref);
+  const label = m ? `<span class="repo">${esc(m[1])} &rsaquo; </span>${esc(m[2].split('/').pop())}${m[3] ? ':' + m[3] : ''}` : esc(e.ref);
+  return `<div class="ev">${href ? `<a href="${href}" target="_blank" rel="noopener" title="${esc(e.ref)}" data-ref="${esc(e.ref)}">${label}</a>` : `<span>${label}</span>`}${e.quote ? `<q>${esc(e.quote)}</q>` : ''}</div>`;
+}
+const evList = list => (list && list.length) ? list.map(evLink).join('') : '';
+const repoHref = repo => (D.meta.repos[repo] && D.meta.repos[repo].tree) || null;
+const repoLink = (repo, cls = '') => repoHref(repo) ? `<a href="${esc(repoHref(repo))}" target="_blank" rel="noopener"${cls ? ` class="${cls}"` : ''}>${esc(repo)}</a>` : `<span${cls ? ` class="${cls}"` : ''}>${esc(repo)}</span>`;
+
+/* ---------- views + routing ---------- */
+function show(view, opts = {}) {
+  $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
+  $$('.tab').forEach(t => { const on = t.dataset.view === view; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; });
+  store.set('view', view);
+  if (!opts.keepHash) setHash(view === 'map' && selNode ? 'node.' + selNode : view === 'map' && mapFlow ? 'mapflow.' + mapFlow : view === 'flows' && flow ? `flow.${flow.id}.${stepIdx + 1}` : view);
+  if (view === 'map') drawMap();
+  if (view === 'flows') drawSeq();
+}
+$$('.tab').forEach(t => {
+  t.onclick = () => show(t.dataset.view);
+  t.onkeydown = e => { if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return; e.preventDefault();
+    const tabs = $$('.tab'), i = tabs.indexOf(t), n = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : (i + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    tabs[n].focus(); show(tabs[n].dataset.view); };
+});
+function route(h) {
+  if (VIEWS.includes(h)) { if (h === 'map' && mapFlow) { mapFlow = null; renderSide(); } show(h, { keepHash: true }); return true; }
+  let m = /^node\.([\w-]+)$/.exec(h); if (m && NODE[m[1]]) { show('map', { keepHash: true }); selectNode(m[1], { fromRoute: true }); return true; }
+  m = /^mapflow\.([\w-]+)$/.exec(h); if (m && D.flows.some(f => f.id === m[1])) { showFlowOnMap(m[1]); return true; }
+  m = /^flow\.([\w-]+)(?:\.(\d+))?$/.exec(h);
+  if (m && D.flows.some(f => f.id === m[1])) { openFlow(m[1], m[2] ? +m[2] - 1 : 0); show('flows', { keepHash: true }); return true; }
+  return false;
+}
+window.addEventListener('hashchange', () => route(location.hash.slice(1)));
+
+/* ---------- MAP ---------- */
+const hiddenLayers = new Set();
+let selNode = null, mapFlow = null, pos = {}, geom = {};
+function drawChips() {
+  $('#chips').innerHTML = `<span class="chips-label">Layers</span>` + D.layers.map(l =>
+    `<button class="chip" type="button" aria-pressed="${!hiddenLayers.has(l.id)}" data-l="${l.id}"><span class="sw" style="background:${l.color}"></span>${esc(l.label)}</button>`).join('')
+    + (hiddenLayers.size ? `<button class="btn ghost" type="button" id="showAll">Show all</button>` : '');
+  $$('#chips .chip').forEach(c => c.onclick = () => { const l = c.dataset.l; hiddenLayers.has(l) ? hiddenLayers.delete(l) : hiddenLayers.add(l); drawChips(); drawMap(); });
+  const sa = $('#showAll'); if (sa) sa.onclick = () => { hiddenLayers.clear(); drawChips(); drawMap(); };
+}
+function layoutMap(W) {
+  // boxes grow on large screens: 1x up to 1440px wide, then in proportion, capped at 1.5x
+  const s = W < 520 ? 1 : Math.min(1.5, Math.max(1, innerWidth / 1440));
+  const PAD = W < 520 ? 10 : Math.round(18 * s), GX = W < 520 ? 10 : Math.round(14 * s), GY = Math.round(16 * s), HEAD = Math.round(30 * s), NH = Math.round(46 * s);
+  let NW = Math.round(140 * s), cols = Math.max(2, Math.floor((W - 2 * PAD + GX) / (NW + GX)));
+  if (cols <= 2) { cols = 2; NW = Math.floor((W - 2 * PAD - GX) / 2); }
+  cols = Math.min(cols, 9);
+  pos = {}; let y = 6; const rows = [];
+  for (const l of D.layers) {
+    if (hiddenLayers.has(l.id)) continue;
+    const ns = D.nodes.filter(n => n.layer === l.id); if (!ns.length) continue;
+    const per = Math.min(cols, ns.length), lines = Math.ceil(ns.length / per);
+    const h = HEAD + lines * (NH + GY) - GY + 14;
+    rows.push({ l, y, h });
+    ns.forEach((n, i) => { const r = Math.floor(i / per), c = i % per, inRow = Math.min(per, ns.length - r * per);
+      const rowW = inRow * (NW + GX) - GX; pos[n.id] = { x: (W - rowW) / 2 + c * (NW + GX), y: y + HEAD + r * (NH + GY) }; });
+    y += h + 10;
+  }
+  geom = { NW, NH, W, H: y, s };
+  return rows;
+}
+function edgePath(a, b) {
+  const { NW, NH } = geom, pa = pos[a], pb = pos[b], x1 = pa.x + NW / 2, x2 = pb.x + NW / 2;
+  if (Math.abs(pa.y - pb.y) < 5) { const my = pa.y - 22 * geom.s; return `M${x1},${pa.y} C${x1},${my} ${x2},${my} ${x2},${pb.y}`; }
+  const [y1, y2] = pa.y < pb.y ? [pa.y + NH, pb.y] : [pa.y, pb.y + NH], my = (y1 + y2) / 2;
+  return `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`;
+}
+function drawMap() {
+  const sc = $('#mapScroll'); if (!sc.clientWidth) return;
+  const W = sc.clientWidth, rows = layoutMap(W), { NW, NH, H, s: k } = geom, svg = $('#mapSvg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('width', W); svg.setAttribute('height', H);
+  const nb = new Set(); if (selNode) { nb.add(selNode); D.edges.forEach(e => { if (e.from === selNode) nb.add(e.to); if (e.to === selNode) nb.add(e.from); }); }
+  const fp = mapFlow ? flowPath(D.flows.find(f => f.id === mapFlow)) : null;
+  let s = `<defs>
+    <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L8,4L0,8z" style="fill:var(--fg-dim)" opacity=".5"/></marker>
+    <marker id="aho" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L8,4L0,8z" style="fill:var(--back)"/></marker>
+    <marker id="ahi" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L8,4L0,8z" style="fill:var(--lay)"/></marker>
+    <marker id="ahf" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L8,4L0,8z" style="fill:var(--accent)"/></marker></defs>`;
+  for (const r of rows) s += `<rect class="layer-band" x="4" y="${r.y}" width="${W - 8}" height="${r.h}" rx="10"/><text class="layer-label" x="${16 * k}" y="${r.y + 19 * k}" style="font-size:${(10.5 * k).toFixed(1)}px">${esc(r.l.label)}</text>`;
+  D.edges.forEach((e, i) => {
+    if (!pos[e.from] || !pos[e.to]) return;
+    let cls = 'edge', mk = 'ah';
+    if (selNode) { if (e.from === selNode) { cls += ' out hi'; mk = 'aho'; } else if (e.to === selNode) { cls += ' in hi'; mk = 'ahi'; } else cls += ' dim'; }
+    else if (fp) { if (fp.edges.has(i)) { cls += ' fp'; mk = 'ahf'; } else cls += ' dim'; }
+    s += `<path class="${cls}" data-e="${i}" d="${edgePath(e.from, e.to)}" marker-end="url(#${mk})"/>`;
+  });
+  const fsL = 12.5 * k, fsS = 10.5 * k, fl = `600 ${fsL}px "Source Sans 3", system-ui, sans-serif`, fs = `${fsS}px "Source Sans 3", system-ui, sans-serif`, tx = 13 * k;
+  for (const n of D.nodes) {
+    const p = pos[n.id]; if (!p) continue;
+    const col = LAYER[n.layer].color, cls = 'node' + (selNode ? (n.id === selNode ? ' sel' : nb.has(n.id) ? '' : ' dim') : fp ? (fp.order.has(n.id) || fp.via.has(n.id) ? '' : ' dim') : '');
+    const ord = fp && !selNode ? fp.order.get(n.id) : null, br = 10 * k;
+    s += `<g class="${cls}" data-id="${n.id}" tabindex="0" role="button" aria-label="${esc(n.label)}: ${esc(n.short || '')}" aria-pressed="${n.id === selNode}">
+      <title>${esc(n.label)}${n.short ? ' (' + esc(n.short) + ')' : ''}</title>
+      <rect class="box" x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="${8 * k}" style="stroke:${col}"/>
+      <rect x="${p.x}" y="${p.y}" width="${5 * k}" height="${NH}" rx="2" style="fill:${col}"/>
+      <text class="nl" x="${p.x + tx}" y="${p.y + 20 * k}" style="font-size:${fsL.toFixed(1)}px">${esc(fit(n.label, NW - tx - 7 * k, fl))}</text>
+      <text class="ns" x="${p.x + tx}" y="${p.y + 35 * k}" style="font-size:${fsS.toFixed(1)}px">${esc(fit(n.short || '', NW - tx - 7 * k, fs))}</text>
+      ${ord ? `<g class="badge" aria-hidden="true"><circle cx="${p.x + NW - 2}" cy="${p.y + 2}" r="${br}"/><text x="${p.x + NW - 2}" y="${p.y + 2 + 4 * k}" style="font-size:${(11 * k).toFixed(1)}px">${ord}</text></g>` : ''}</g>`;
+  }
+  svg.innerHTML = s;
+  svg.querySelectorAll('.node').forEach(g => {
+    g.onclick = ev => { ev.stopPropagation(); selectNode(g.dataset.id === selNode && !narrow() ? null : g.dataset.id); };
+    g.onkeydown = ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); selectNode(g.dataset.id, { focusCard: true }); } };
+  });
+  $('#mapHint').hidden = !!selNode || !!mapFlow;
+  drawFlowBanner();
+}
+/* which connections and components a flow uses; a step with no direct connection is drawn through a component marked gateway: true */
+const GATEWAYS = D.nodes.filter(n => n.gateway).map(n => n.id);
+function flowPath(f) {
+  const idx = new Map(D.edges.map((e, i) => [e.from + '>' + e.to, i])), edges = new Set(), via = new Set(), order = new Map();
+  const add = (a, b) => { if (idx.has(a + '>' + b)) { edges.add(idx.get(a + '>' + b)); return true; }
+    for (const g of GATEWAYS) if (idx.has(a + '>' + g) && idx.has(g + '>' + b)) { edges.add(idx.get(a + '>' + g)); edges.add(idx.get(g + '>' + b)); via.add(g); return true; }
+    return false; };
+  f.steps.forEach(st => {
+    [st.from, st.to].forEach(a => { if (!order.has(a)) order.set(a, order.size + 1); });
+    if (st.from === st.to) return;
+    if (st.kind === 'res') add(st.to, st.from) || add(st.from, st.to); else add(st.from, st.to);
+  });
+  return { edges, via, order };
+}
+function drawFlowBanner() {
+  const b = $('#flowBanner'), f = mapFlow && D.flows.find(x => x.id === mapFlow);
+  b.hidden = !f || !!selNode; if (b.hidden) return;
+  b.innerHTML = `<span><b>${esc(f.title)}</b> on the map</span><span class="note">Highlighted lines are the connections this flow uses; numbers show the order components join it.</span>
+    <button class="btn" type="button" id="fbBack">Back to the flow</button><button class="btn ghost" type="button" id="fbExit">Exit</button>`;
+  $('#fbBack').onclick = () => { openFlow(f.id, stepIdx < f.steps.length && flow && flow.id === f.id ? stepIdx : 0); show('flows'); };
+  $('#fbExit').onclick = () => showFlowOnMap(null);
+}
+function showFlowOnMap(id) {
+  mapFlow = id; selNode = null;
+  show('map', { keepHash: true }); setHash(id ? 'mapflow.' + id : 'map');
+  drawMap(); renderSide(); $('#side').classList.toggle('open', !!id && narrow());
+  if (id) announce(`${D.flows.find(f => f.id === id).title} shown on the map`);
+}
+$('#mapSvg').addEventListener('click', ev => { if (!ev.target.closest('.node') && selNode) selectNode(null); });
+new ResizeObserver(() => { if ($('#view-map').classList.contains('active')) drawMap(); }).observe($('#mapScroll'));
+
+function highlightEdge(i, on) { const p = $(`#mapSvg path[data-e="${i}"]`); if (p) p.classList.toggle('focus', on); }
+function relRows(n, dir) {
+  return D.edges.map((e, i) => [e, i]).filter(([e]) => (dir === 'out' ? e.from : e.to) === n.id).map(([e, i]) => {
+    const other = NODE[dir === 'out' ? e.to : e.from];
+    return `<div class="row" data-e="${i}"><span class="p ${dir}">${esc(e.protocol)}</span><button class="lnk" type="button" data-go="${other.id}" data-e="${i}">${esc(other.label)}</button>${e.what ? `<span class="why">${esc(e.what)}</span>` : ''}</div>`;
+  }).join('');
+}
+function renderSide() {
+  const side = $('#side');
+  if (!selNode && mapFlow) {
+    const f = D.flows.find(x => x.id === mapFlow);
+    side.innerHTML = `<div class="side-head"><div><h2 id="sideTitle">${esc(f.title)}</h2><div class="meta">${f.steps.length} steps &middot; ${f.actors.length} components</div></div><button class="btn ghost sheet-close" type="button" aria-label="Close">Close</button></div>
+      <p>${f.summary}</p><div class="sec-t">Steps</div>
+      <ol class="stepslist">${f.steps.map((st, i) => `<li><button type="button" data-open-step="${i}"><span class="n">${i + 1}</span><span class="l">${esc(st.label)}</span><span class="h">${esc(actorLabel(st.from))}${st.from === st.to ? '' : ' &rarr; ' + esc(actorLabel(st.to))}</span></button></li>`).join('')}</ol>`;
+    side.querySelectorAll('[data-open-step]').forEach(b => b.onclick = () => { openFlow(f.id, +b.dataset.openStep); show('flows'); });
+    side.querySelectorAll('.sheet-close').forEach(b => b.onclick = () => side.classList.remove('open'));
+    side.scrollTop = 0; return;
+  }
+  if (!selNode) { side.innerHTML = `<div class="side-head"><div class="intro">${D.mapIntro}</div><button class="btn ghost sheet-close" type="button" aria-label="Close">Close</button></div>`; wireSide(side); return; }
+  const n = NODE[selNode], L = LAYER[n.layer];
+  const outs = D.edges.filter(e => e.from === n.id), ins = D.edges.filter(e => e.to === n.id);
+  const flows = D.flows.filter(f => f.actors.includes(n.id));
+  const connEv = outs.concat(ins);
+  side.innerHTML = `
+    <div class="side-head"><div>
+      <h2 id="sideTitle">${esc(n.label)}</h2>
+      <div class="meta"><span class="layerpill"><span class="sw" style="background:${L.color}"></span>${esc(L.label)}</span>
+        ${n.repo ? repoLink(n.repo, 'mono') : ''}
+        <button class="btn ghost" type="button" id="copyNode">Copy link</button></div>
+    </div><button class="btn ghost sheet-close" type="button" aria-label="Close details">Close</button></div>
+    <p>${n.purpose}</p>
+    ${n.callout ? `<div class="callout">${n.callout}</div>` : ''}
+    ${n.exposes && n.exposes.length ? `<div class="sec-t">Exposes</div><div class="tags">${n.exposes.map(x => `<span class="tag">${esc(x)}</span>`).join('')}</div>` : ''}
+    ${n.stores && n.stores.length ? `<div class="sec-t">Stores data in</div><div class="tags">${n.stores.map(x => `<span class="tag">${esc(x)}</span>`).join('')}</div>` : ''}
+    ${outs.length ? `<div class="sec-t">Calls / sends to (${outs.length})</div><div class="rel">${relRows(n, 'out')}</div>` : ''}
+    ${ins.length ? `<div class="sec-t">Called by / receives from (${ins.length})</div><div class="rel">${relRows(n, 'in')}</div>` : ''}
+    ${flows.length ? `<div class="sec-t">Appears in flows</div><div class="tags">${flows.map(f => `<button class="btn" type="button" data-flow="${f.id}">${esc(f.title)}</button>`).join('')}</div>` : ''}
+    ${n.tests && n.tests.length ? `<div class="sec-t">Tests and test helpers</div><div class="qa">${n.tests.map(q => `<div class="it"><span class="k">${esc(q.kind)}</span><span class="nm">${esc(q.name)}</span>${q.note ? `<span class="nt">${esc(q.note)}</span>` : ''}${evLink(q)}</div>`).join('')}</div>` : ''}
+    ${n.evidence && n.evidence.length ? `<div class="sec-t">Evidence</div>${evList(n.evidence)}` : ''}
+    ${linksBlock(n.links)}
+    ${connEv.some(e => e.evidence && e.evidence.length) ? `<details class="conn"><summary class="sec-t">Evidence for each connection (${connEv.length})</summary>${connEv.map(e => `<div class="c"><b>${esc(NODE[e.from].label)} &rarr; ${esc(NODE[e.to].label)}</b> <span class="tag">${esc(e.protocol)}</span>${evList(e.evidence)}</div>`).join('')}</details>` : ''}`;
+  wireSide(side);
+  $('#copyNode').onclick = ev => copyText(location.href.split('#')[0] + '#node.' + n.id, ev.currentTarget, 'Copy link');
+}
+function linksBlock(links) {
+  if (!links || !links.length) return '';
+  return `<div class="sec-t">Related links</div><p class="note">Pointers to docs, dashboards or tickets. They are not evidence and are not checked.</p><ul class="links">${links.map(l => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)}</a>${l.kind ? ` <span class="tag">${esc(l.kind)}</span>` : ''}</li>`).join('')}</ul>`;
+}
+function wireSide(side) {
+  side.querySelectorAll('[data-go]').forEach(b => {
+    b.onclick = () => selectNode(b.dataset.go, { focusCard: true });
+    const row = b.closest('.row');
+    [b, ...row.children].forEach(el => { el.onmouseenter = () => highlightEdge(b.dataset.e, true); el.onmouseleave = () => highlightEdge(b.dataset.e, false); });
+    b.onfocus = () => highlightEdge(b.dataset.e, true); b.onblur = () => highlightEdge(b.dataset.e, false);
+  });
+  side.querySelectorAll('[data-flow]').forEach(b => b.onclick = () => { openFlow(b.dataset.flow); show('flows'); });
+  side.querySelectorAll('.sheet-close').forEach(b => b.onclick = () => { side.classList.remove('open'); if (selNode) selectNode(null); });
+  side.scrollTop = 0;
+}
+function selectNode(id, opts = {}) {
+  selNode = id; if (id) mapFlow = null;
+  if (id && hiddenLayers.has(NODE[id].layer)) { hiddenLayers.delete(NODE[id].layer); drawChips(); }
+  drawMap(); renderSide();
+  $('#side').classList.toggle('open', !!id || !!opts.openIntro);
+  if ($('#view-map').classList.contains('active')) setHash(id ? 'node.' + id : 'map');
+  if (id) {
+    announce(`${NODE[id].label} selected`);
+    const p = pos[id], sc = $('#mapScroll');
+    if (p) { const top = p.y - (narrow() ? 60 : sc.clientHeight / 3); if (p.y < sc.scrollTop || p.y > sc.scrollTop + sc.clientHeight - 80 || narrow()) sc.scrollTo({ top: Math.max(0, top), behavior: 'smooth' }); }
+    if (opts.focusCard) setTimeout(() => { const t = $('#sideTitle'); if (t) { t.tabIndex = -1; t.focus({ preventScroll: true }); } }, 30);
+  }
+}
+
+/* map search combobox */
+(() => {
+  const input = $('#mapSearch'), list = $('#mapResults'); let items = [], active = -1;
+  const score = (n, q) => { const l = n.label.toLowerCase(); if (l.startsWith(q)) return 0; if (l.includes(q)) return 1;
+    return [n.short, n.repo, strip(n.purpose)].join(' ').toLowerCase().includes(q) ? 2 : 9; };
+  function render() {
+    const q = input.value.trim().toLowerCase();
+    items = q ? D.nodes.map(n => [n, score(n, q)]).filter(([, s]) => s < 9).sort((a, b) => a[1] - b[1] || a[0].label.localeCompare(b[0].label)).slice(0, 8).map(([n]) => n) : [];
+    active = items.length ? 0 : -1;
+    list.innerHTML = items.length ? items.map((n, i) => `<li role="option" id="opt-${n.id}" data-id="${n.id}" aria-selected="${i === active}"><span class="sw" style="background:${LAYER[n.layer].color}"></span><span>${esc(n.label)} <small>${esc(n.short || '')}</small></span></li>`).join('')
+      : (q ? `<li role="option" aria-disabled="true"><small>No component matches "${esc(input.value)}"</small></li>` : '');
+    list.hidden = !q; input.setAttribute('aria-expanded', String(!!q));
+    input.setAttribute('aria-activedescendant', active >= 0 ? 'opt-' + items[active].id : '');
+    list.querySelectorAll('li[data-id]').forEach(li => li.onmousedown = ev => { ev.preventDefault(); choose(li.dataset.id); });
+  }
+  function move(d) { if (!items.length) return; active = (active + d + items.length) % items.length;
+    list.querySelectorAll('li[data-id]').forEach((li, i) => li.setAttribute('aria-selected', i === active)); input.setAttribute('aria-activedescendant', 'opt-' + items[active].id); }
+  function choose(id) { input.value = ''; list.hidden = true; input.setAttribute('aria-expanded', 'false'); selectNode(id, { focusCard: true }); }
+  input.oninput = render;
+  input.onkeydown = e => { if (e.key === 'ArrowDown') { e.preventDefault(); move(1); } else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
+    else if (e.key === 'Enter' && active >= 0) { e.preventDefault(); choose(items[active].id); } else if (e.key === 'Escape') { input.value = ''; render(); } };
+  input.onblur = () => setTimeout(() => { list.hidden = true; input.setAttribute('aria-expanded', 'false'); }, 120);
+})();
+
+/* ---------- FLOWS ---------- */
+const STARTER = D.flows.filter(f => f.featured).map(f => f.id);
+let flow = null, stepIdx = 0, timer = null;
+const actorLabel = a => (NODE[a] && (NODE[a].seqLabel || NODE[a].label)) || a;
+function flowListHtml() {
+  const starters = STARTER.map(id => D.flows.find(f => f.id === id)).filter(Boolean), rest = D.flows.filter(f => !STARTER.includes(f.id));
+  const btn = (f, num) => `<button type="button" data-f="${f.id}"><span class="num">${num}</span><span class="ft">${esc(f.title)}</span><span class="fs">${esc(f.tagline || '')}</span></button>`;
+  if (!starters.length) return `<div class="fl-group">Flows</div>${rest.map((f, i) => btn(f, i + 1)).join('')}`;
+  return `<div class="fl-group">Start here</div>${starters.map((f, i) => btn(f, i + 1)).join('')}${rest.length ? `<div class="fl-group">More flows</div>${rest.map(f => btn(f, '&middot;')).join('')}` : ''}`;
+}
+$('#flowlist').innerHTML = flowListHtml();
+$$('#flowlist button').forEach(b => b.onclick = () => openFlow(b.dataset.f));
+$('#flowSelect').innerHTML = !STARTER.length ? D.flows.map(f => `<option value="${f.id}">${esc(f.title)}</option>`).join('') : `<optgroup label="Start here">${STARTER.map((id, i) => { const f = D.flows.find(x => x.id === id); return f ? `<option value="${f.id}">${i + 1}. ${esc(f.title)}</option>` : ''; }).join('')}</optgroup>
+  <optgroup label="More flows">${D.flows.filter(f => !STARTER.includes(f.id)).map(f => `<option value="${f.id}">${esc(f.title)}</option>`).join('')}</optgroup>`;
+$('#flowSelect').onchange = e => openFlow(e.target.value);
+
+function testsBlock(f) {
+  if (!f.tests || !f.tests.length) return '';
+  return `<div class="tests"><span class="tests-t">Tested in</span>${f.tests.map(e => {
+    const file = e.ref.split(':')[1].split('/').pop();
+    return `<div class="test"><a href="${evHref(e.ref)}" target="_blank" rel="noopener" title="${esc(e.ref)}" data-ref="${esc(e.ref)}"><code>${esc(file)}${e.name ? '::' + esc(e.name) : ''}</code></a>${e.why ? `<span>${esc(e.why)}</span>` : ''}</div>`;
+  }).join('')}</div>`;
+}
+function openFlow(id, step = 0) {
+  flow = D.flows.find(f => f.id === id) || D.flows[0]; stop();
+  stepIdx = Math.max(0, Math.min(flow.steps.length - 1, step));
+  store.set('flow', flow.id);
+  $$('#flowlist button').forEach(b => b.setAttribute('aria-current', b.dataset.f === flow.id));
+  $('#flowSelect').value = flow.id;
+  $('#flowHead').innerHTML = `<h2>${esc(flow.title)}</h2>
+    <div class="ctrls"><button class="btn" type="button" id="prevB" aria-label="Previous step">&#8592; Prev</button><span class="pos" id="posT" aria-live="off"></span>
+      <button class="btn" type="button" id="nextB" aria-label="Next step">Next &#8594;</button><button class="btn" type="button" id="playB">Play</button>
+      <button class="btn" type="button" id="onMapB">Show on map</button><button class="btn ghost" type="button" id="copyStep">Copy link</button></div>
+    <p class="sum">${flow.summary}</p>${testsBlock(flow)}`;
+  $('#prevB').onclick = () => { stop(); go(stepIdx - 1); }; $('#nextB').onclick = () => { stop(); go(stepIdx + 1); };
+  $('#playB').onclick = () => timer ? stop() : play();
+  $('#onMapB').onclick = () => { stop(); showFlowOnMap(flow.id); };
+  $('#copyStep').onclick = ev => copyText(location.href.split('#')[0] + `#flow.${flow.id}.${stepIdx + 1}`, ev.currentTarget, 'Copy link');
+  drawSeq(); renderStep(false);
+}
+function showInspector() { setTimeout(() => $('#inspector').scrollIntoView({ block: 'start' }), 60); }
+function play() { $('#playB').textContent = 'Pause'; timer = setInterval(() => { if (stepIdx >= flow.steps.length - 1) return stop(); go(stepIdx + 1); }, 2600); }
+function stop() { clearInterval(timer); timer = null; const b = $('#playB'); if (b) b.textContent = 'Play'; }
+function go(i, focusRow) { if (!flow) return; stepIdx = Math.max(0, Math.min(flow.steps.length - 1, i)); drawSeq(); renderStep(true); if (focusRow) $(`#seqSvg .seq-row[data-i="${stepIdx}"]`)?.focus(); }
+let lane = 132, SROW = 34, STOP = 52, SLEFT = 30;
+const rootScale = () => parseFloat(getComputedStyle(document.documentElement).fontSize) / 15;
+function drawSeq() {
+  if (!flow) return;
+  const A = flow.actors, svg = $('#seqSvg'), wrap = $('#seqWrap');
+  const r = rootScale(); SROW = Math.round(34 * r); STOP = Math.round(52 * r); SLEFT = Math.round(30 * r);
+  const avail = (wrap.clientWidth || 700) - SLEFT - 8;
+  lane = Math.max(Math.round(88 * r), Math.min(Math.round(150 * r), Math.floor(avail / A.length)));
+  const w = SLEFT + A.length * lane + 8, h = STOP + flow.steps.length * SROW + 16;
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`); svg.setAttribute('width', w); svg.setAttribute('height', h);
+  const cx = a => SLEFT + A.indexOf(a) * lane + lane / 2, font = `${(11.5 * r).toFixed(2)}px "Source Sans 3", system-ui, sans-serif`;
+  let s = `<defs>${['req:var(--back)', 'res:var(--lay)', 'async:var(--async)', 'self:var(--note)'].map(x => { const [k, c] = x.split(':');
+    return `<marker id="sq-${k}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L8,4L0,8z" style="fill:${c}"/></marker>`; }).join('')}</defs>`;
+  A.forEach(a => { const x = cx(a); s += `<line class="lifeline" x1="${x}" y1="${STOP - 8}" x2="${x}" y2="${h - 6}"/>`; });
+  flow.steps.forEach((st, i) => {
+    const y = STOP + i * SROW + SROW / 2, k = st.kind === 'res' ? 'res' : st.kind === 'async' ? 'async' : 'req';
+    const cls = `seq-row${i === stepIdx ? ' cur' : ''}${st.kind === 'res' ? ' res' : st.kind === 'async' ? ' async' : ''}`;
+    let g = `<title>${esc(st.label)}</title><rect class="rowbg" x="0" y="${y - SROW / 2}" width="${w}" height="${SROW}"/><text class="seq-num" x="8" y="${y + 4 * r}">${i + 1}</text>`;
+    if (st.from === st.to) {
+      const x = cx(st.from), room = w - x - 34;
+      g += `<path class="arr-self" d="M${x},${y - 9 * r} h${22 * r} v${14 * r} h${-20 * r}" marker-end="url(#sq-self)"/><text class="seq-lbl" x="${x + 28 * r}" y="${y + 4 * r}">${esc(fit(st.label, room, font))}</text>`;
+    } else {
+      const x1 = cx(st.from), x2 = cx(st.to), dir = x2 > x1 ? 1 : -1, span = Math.abs(x2 - x1) - 12;
+      g += `<line class="arr-${k}" x1="${x1}" y1="${y + 6 * r}" x2="${x2 - dir * 2}" y2="${y + 6 * r}" marker-end="url(#sq-${k})"/>`;
+      const lx = Math.min(x1, x2) + 6; g += `<text class="seq-lbl" x="${lx}" y="${y - 1}">${esc(fit(st.label, Math.max(span, w - lx - 8), font))}</text>`;
+    }
+    s += `<g class="${cls}" data-i="${i}" tabindex="${i === stepIdx ? 0 : -1}" role="button" aria-label="Step ${i + 1}: ${esc(st.label)}, ${esc(actorLabel(st.from))} to ${esc(actorLabel(st.to))}" aria-current="${i === stepIdx ? 'step' : 'false'}">${g}</g>`;
+  });
+  A.forEach(a => { const x = cx(a); s += `<g class="seq-actor"><rect x="${x - lane / 2 + 5}" y="8" width="${lane - 10}" height="${30 * r}" rx="6"/><text x="${x}" y="${8 + 19 * r}" text-anchor="middle">${esc(fit(actorLabel(a), lane - 18, `700 ${(11.5 * r).toFixed(2)}px "Source Sans 3", system-ui, sans-serif`))}</text></g>`; });
+  svg.innerHTML = s;
+  svg.querySelectorAll('.seq-row').forEach(g => {
+    g.onclick = () => { stop(); go(+g.dataset.i); if (narrow()) showInspector(); };
+    g.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stop(); go(+g.dataset.i, true); } };
+  });
+  // keep the current step in view, both directions
+  const st = flow.steps[stepIdx], y = STOP + stepIdx * SROW;
+  if (y < wrap.scrollTop + STOP || y > wrap.scrollTop + wrap.clientHeight - SROW * 2) wrap.scrollTo({ top: Math.max(0, y - wrap.clientHeight / 2), behavior: 'smooth' });
+  const xs = [cx(st.from), cx(st.to)], left = Math.min(...xs) - lane / 2, right = Math.max(...xs) + lane;
+  if (left < wrap.scrollLeft || right > wrap.scrollLeft + wrap.clientWidth) wrap.scrollTo({ left: Math.max(0, left - 20), behavior: 'smooth' });
+}
+new ResizeObserver(() => { if ($('#view-flows').classList.contains('active')) drawSeq(); }).observe($('#seqWrap'));
+function hlJson(txt) {
+  return esc(txt).replace(/(&quot;[^&]*?&quot;)(\s*:)?|(\/\/[^\n]*)|\b(-?\d+(?:\.\d+)?)\b|\b(true|false|null)\b/g, (m, str, colon, cmt, num, kw) => {
+    if (cmt) return `<span class="j-c">${cmt}</span>`;
+    if (str) return colon ? `<span class="j-k">${str}</span>${colon}` : `<span class="j-s">${str}</span>`;
+    if (num || kw) return `<span class="j-n">${m}</span>`;
+    return m;
+  });
+}
+function payloadBox(kind, title, body, schema) {
+  if (body == null) return '';
+  const txt = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
+  const trimmed = /\.\.\.|\u2026/.test(txt);
+  const def = schema ? `<a class="def" href="${evHref(schema.ref)}" target="_blank" rel="noopener" data-ref="${esc(schema.ref)}" title="${esc(schema.ref)}">Full definition</a>` : '';
+  return `<div class="pl ${kind}"><div class="pl-h"><span>${esc(title)}${trimmed ? ` <span class="trim" title="Fields marked ... are left out of this example">key fields only</span>` : ''}</span>
+    <span class="acts">${def}<button class="copy" type="button" data-copy aria-label="Copy ${esc(title.toLowerCase())}">Copy</button></span></div><pre tabindex="0">${hlJson(txt)}</pre></div>`;
+}
+const NOTE = { 'no-body': 'No request body is sent.', sql: 'A database statement; there is no JSON payload.', internal: 'Nothing is sent over the wire in this step.',
+  unknown: 'Payload shape not shown: its wire format is defined outside the code that was checked.',
+  'class-fields': 'Key names are the fields of the message class. The exact wire format is set by a serialiser that was not checked.' };
+const defLinks = st => { const l = [['Request', st.requestSchema], ['Response', st.responseSchema]].filter(x => x[1]);
+  return l.length ? `<p class="unv">Definition: ${l.map(([n, e]) => `<a class="def" href="${evHref(e.ref)}" target="_blank" rel="noopener" data-ref="${esc(e.ref)}" title="${esc(e.ref)}">${n.toLowerCase()}</a>`).join(' &middot; ')}</p>` : ''; };
+const KIND = { req: ['k-req', 'Request'], res: ['k-res', 'Response'], async: ['k-async', 'Async message'], self: ['k-self', 'Inside one service'] };
+function renderStep(announceIt) {
+  const st = flow.steps[stepIdx], n = flow.steps.length;
+  $('#posT').textContent = `${stepIdx + 1} / ${n}`;
+  $('#prevB').disabled = stepIdx === 0; $('#nextB').disabled = stepIdx === n - 1;
+  const [kc, kl] = KIND[st.kind] || KIND.req;
+  const hop = st.from === st.to ? `<div class="hop">Inside <b>${esc(actorLabel(st.from))}</b></div>`
+    : `<div class="hop"><b>${esc(actorLabel(st.from))}</b> &rarr; <b>${esc(actorLabel(st.to))}</b>${st.protocol ? ` &middot; ${esc(st.protocol)}` : ''}</div>`;
+  const call = st.call ? `<div class="callline">${st.call.verb ? `<span class="verb">${esc(st.call.verb)}</span>` : ''}${esc(st.call.target)}</div>` : '';
+  const resOnly = st.kind === 'res';
+  const pls = (st.request !== undefined || st.response !== undefined)
+    ? `<div class="payloads">${payloadBox('req', st.requestTitle || 'Request', st.request, st.requestSchema)}${payloadBox('res', st.responseTitle || 'Response', st.response, resOnly ? (st.responseSchema || st.requestSchema) : st.responseSchema)}</div>`
+      + (st.payloadNote && NOTE[st.payloadNote] ? `<p class="unv">${NOTE[st.payloadNote]}</p>` : '')
+    : st.payloadNote && NOTE[st.payloadNote] ? `<p class="unv">${NOTE[st.payloadNote]}</p>${defLinks(st)}`
+    : (st.kind === 'req' || st.kind === 'async' || st.kind === 'res') && !st.noPayload ? `<p class="unv">Payload shape not shown: it could not be confirmed from code.</p>${defLinks(st)}` : defLinks(st);
+  // a request whose answer is a later step: say where it is
+  let answerAt = -1;
+  if (st.kind === 'req' && st.response === undefined) answerAt = flow.steps.findIndex((x, j) => j > stepIdx && x.kind === 'res' && x.from === st.to && x.to === st.from);
+  const answerNote = answerAt > 0 ? `<p class="unv">The response is <button class="lnk" type="button" data-step="${answerAt}" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font:inherit;text-decoration:underline">step ${answerAt + 1}: ${esc(flow.steps[answerAt].label)}</button>.</p>` : '';
+  const prev = flow.steps[stepIdx - 1], next = flow.steps[stepIdx + 1];
+  $('#inspector').innerHTML = `<span class="step-kind ${kc}">${kl}</span><h3 id="stepTitle">${esc(st.label)}</h3>${hop}<p>${st.description || ''}</p>${call}${pls}${answerNote}
+    ${st.evidence && st.evidence.length ? `<div class="sec-t">Evidence</div>${evList(st.evidence)}` : ''}
+    <div class="stepnav">${prev ? `<button class="btn" type="button" data-step="${stepIdx - 1}"><span>&#8592; ${esc(prev.label)}</span></button>` : '<span></span>'}
+      ${next ? `<button class="btn primary" type="button" data-step="${stepIdx + 1}"><span>Next: ${esc(next.label)} &#8594;</span></button>` : `<span class="note">End of flow</span>`}</div>`;
+  $$('#inspector [data-copy]').forEach(b => b.onclick = () => copyText(b.closest('.pl').querySelector('pre').innerText, b));
+  $$('#inspector [data-step]').forEach(b => b.onclick = () => { stop(); go(+b.dataset.step); $('#inspector').scrollTop = 0; if (narrow()) showInspector(); });
+  $('#inspector').scrollTop = 0;
+  if ($('#view-flows').classList.contains('active')) setHash(`flow.${flow.id}.${stepIdx + 1}`);
+  if (announceIt) announce(`Step ${stepIdx + 1} of ${n}: ${st.label}`);
+}
+document.addEventListener('keydown', e => {
+  const tag = document.activeElement.tagName;
+  if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(tag)) { e.preventDefault(); if (!$('#view-map').classList.contains('active')) show('map'); $('#mapSearch').focus(); return; }
+  if (e.key === 'Escape' && $('#view-map').classList.contains('active') && selNode && tag !== 'INPUT') { const id = selNode; selectNode(null); $(`#mapSvg .node[data-id="${id}"]`)?.focus(); return; }
+  if (e.key === 'Escape' && $('#view-map').classList.contains('active') && mapFlow && tag !== 'INPUT') { showFlowOnMap(null); return; }
+  if (!$('#view-flows').classList.contains('active') || /INPUT|TEXTAREA|SELECT/.test(tag) || document.activeElement.classList.contains('tab') || document.activeElement.classList.contains('splitter')) return;
+  const inSeq = !!document.activeElement.closest?.('#seqSvg');
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); stop(); go(stepIdx + 1, inSeq); }
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); stop(); go(stepIdx - 1, inSeq); }
+});
+
+/* ---------- COMPONENTS ---------- */
+$('#compLayer').innerHTML = `<option value="">All layers</option>` + D.layers.map(l => `<option value="${l.id}">${esc(l.label)}</option>`).join('');
+function drawComps() {
+  const q = $('#compSearch').value.trim().toLowerCase(), lay = $('#compLayer').value;
+  const rows = D.nodes.filter(n => (!lay || n.layer === lay) && (!q || [n.label, n.short, n.repo, strip(n.purpose), (n.exposes || []).join(' '), (n.stores || []).join(' '), LAYER[n.layer].label, D.edges.filter(e => e.from === n.id || e.to === n.id).map(e => e.protocol).join(' ')].join(' ').toLowerCase().includes(q)));
+  $('#compCount').textContent = `Showing ${rows.length} of ${D.nodes.length}`;
+  $('#compBody').innerHTML = rows.length ? rows.map(n => `<tr data-id="${n.id}" tabindex="0" aria-label="${esc(n.label)}, open on the map">
+    <td><span class="sw" style="background:${LAYER[n.layer].color}"></span><b>${esc(n.label)}</b><span class="lay">${esc(LAYER[n.layer].label)}</span></td>
+    <td class="mono">${n.repo ? repoLink(n.repo) : ''}</td><td>${n.purpose}</td>
+    <td>${(n.exposes || []).map(x => `<span class="tag">${esc(x)}</span>`).join(' ')}</td><td>${(n.stores || []).map(x => `<span class="tag">${esc(x)}</span>`).join(' ')}</td></tr>`).join('')
+    : `<tr><td colspan="5" class="empty">No component matches. Clear the filter to see all ${D.nodes.length}.</td></tr>`;
+  $$('#compBody tr[data-id]').forEach(tr => {
+    const open = () => { show('map'); selectNode(tr.dataset.id, { focusCard: true }); };
+    tr.onclick = ev => { if (!ev.target.closest('a')) open(); };
+    tr.onkeydown = ev => { if (ev.key === 'Enter') { ev.preventDefault(); open(); } };
+  });
+}
+$('#compSearch').oninput = drawComps; $('#compLayer').onchange = drawComps;
+
+/* ---------- ABOUT ---------- */
+function factsHtml() {
+  return (D.facts || []).map(g => `<h3>${esc(g.group)}</h3><ul class="facts">${g.items.map(f => `<li>${f.text}${evList(f.evidence)}</li>`).join('')}</ul>`).join('');
+}
+function drawAbout() {
+  const src = document.createElement('div'); src.innerHTML = D.about + factsHtml();
+  const intro = document.createElement('div'); intro.className = 'about-intro';
+  const secs = document.createElement('div'); secs.className = 'about-secs';
+  let cur = null, i = 0;
+  [...src.childNodes].forEach(node => {
+    if (node.nodeType === 1 && node.tagName === 'H3') { cur = document.createElement('section'); cur.className = 'about-sec'; node.id = 'sec-' + i++; cur.setAttribute('aria-labelledby', node.id); secs.appendChild(cur); }
+    (cur || intro).appendChild(node);
+  });
+  const hs = [...secs.querySelectorAll('h3')];
+  const layout = document.createElement('div'); layout.className = 'about-layout';
+  const toc = document.createElement('nav'); toc.className = 'about-toc'; toc.setAttribute('aria-label', 'On this page');
+  toc.innerHTML = `<span class="toc-t">On this page</span>` + hs.map((h, k) => `<button type="button" data-sec="${k}">${esc(h.textContent)}</button>`).join('');
+  const main = document.createElement('div'); main.className = 'about-main'; main.append(intro, secs);
+  layout.append(toc, main);
+  const about = $('#about'); about.innerHTML = ''; about.appendChild(layout);
+  toc.querySelectorAll('button').forEach(b => b.onclick = () => {
+    toc.querySelectorAll('button').forEach(x => x.removeAttribute('aria-current')); b.setAttribute('aria-current', 'true');
+    $('#sec-' + b.dataset.sec).closest('.about-sec').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
+/* ---------- draggable dividers ---------- */
+function makeSplitter(el, o) {
+  // o: { host, cssVar, key, def, min, max(hostWidth), measure: 'left'|'right', panel }
+  const host = o.host, apply = px => { host.style.setProperty(o.cssVar, px == null ? '' : px + 'px'); sync(); };
+  const cur = () => o.panel().getBoundingClientRect().width;
+  const limits = () => { const hw = host.getBoundingClientRect().width; return [o.min, Math.max(o.min, Math.round(o.max(hw)))]; };
+  const clamp = px => { const [lo, hi] = limits(); return Math.round(Math.min(hi, Math.max(lo, px))); };
+  const sync = () => { const [lo, hi] = limits(); el.setAttribute('aria-valuemin', lo); el.setAttribute('aria-valuemax', hi); el.setAttribute('aria-valuenow', Math.round(cur())); };
+  const save = px => store.set(o.key, px == null ? '' : String(px));
+  const saved = parseInt(store.get(o.key), 10); if (saved > 0) host.style.setProperty(o.cssVar, saved + 'px');
+  el.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return; e.preventDefault(); el.setPointerCapture(e.pointerId); el.classList.add('dragging'); document.body.classList.add('resizing');
+    const r = o.panel().getBoundingClientRect();
+    const move = ev => { const px = o.measure === 'left' ? ev.clientX - r.left : r.right - ev.clientX; apply(clamp(px)); };
+    const up = ev => { el.releasePointerCapture(ev.pointerId); el.classList.remove('dragging'); document.body.classList.remove('resizing');
+      el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); save(Math.round(cur())); };
+    el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  });
+  el.addEventListener('dblclick', () => { apply(null); save(null); announce('Panel size reset'); });
+  el.addEventListener('keydown', e => {
+    const step = e.shiftKey ? 80 : 24, grow = o.measure === 'left' ? 1 : -1; let px = null;
+    if (e.key === 'ArrowRight') px = cur() + step * grow; else if (e.key === 'ArrowLeft') px = cur() - step * grow;
+    else if (e.key === 'Home') px = o.measure === 'left' ? limits()[0] : limits()[1]; else if (e.key === 'End') px = o.measure === 'left' ? limits()[1] : limits()[0];
+    else if (e.key === 'Enter') { apply(null); save(null); e.preventDefault(); return; } else return;
+    e.preventDefault(); e.stopPropagation(); px = clamp(px); apply(px); save(px);
+  });
+  new ResizeObserver(sync).observe(host); sync();
+}
+makeSplitter($('#splitMap'), { host: $('#view-map'), panel: () => $('#side'), cssVar: '--side-w', key: 'w-side', min: 280, max: hw => hw * 0.7, measure: 'right' });
+makeSplitter($('#splitList'), { host: $('#view-flows'), panel: () => $('#flowlist'), cssVar: '--list-w', key: 'w-list', min: 170, max: hw => Math.min(480, hw * 0.4), measure: 'left' });
+makeSplitter($('#splitSeq'), { host: $('#view-flows'), panel: () => $('#seqWrap'), cssVar: '--seq-w', key: 'w-seq', min: 300, max: hw => hw - $('#flowlist').getBoundingClientRect().width - 320, measure: 'left' });
+
+/* ---------- boot ---------- */
+drawAbout(); drawChips(); renderSide(); drawComps();
+if (!D.flows.length) { $('#tab-flows').hidden = true; }
+if (D.flows.length) openFlow(D.flows.some(f => f.id === store.get('flow')) ? store.get('flow') : (STARTER[0] || D.flows[0].id));
+const h0 = location.hash.slice(1);
+if (!route(h0)) show(VIEWS.includes(store.get('view')) ? store.get('view') : 'map');
+})();
+</script>
+</body>
+</html>

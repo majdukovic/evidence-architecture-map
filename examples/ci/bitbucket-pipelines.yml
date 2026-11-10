@@ -1,0 +1,12 @@
+# Add under "pipelines:" in bitbucket-pipelines.yml and schedule "custom: verify-architecture-map".
+# Repository settings > Pipelines > SSH keys: generate a key and add its public key as a read-only access key
+# to every cited repo. The pipeline's SSH key then clones them.
+custom:
+  verify-architecture-map:
+    - step:
+        name: Check every evidence reference
+        image: node:22
+        script:
+          - git config --global url."git@bitbucket.org:".insteadOf "https://bitbucket.org/"
+          - git clone -q --depth 1 https://github.com/majdukovic/evidence-architecture-map tools/evidence-architecture-map
+          - bash tools/evidence-architecture-map/skills/build-architecture-map/scripts/verify-ci.sh docs/architecture-map

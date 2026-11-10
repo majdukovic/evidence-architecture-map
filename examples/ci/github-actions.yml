@@ -1,0 +1,22 @@
+# .github/workflows/verify-architecture-map.yml in the repo that holds the map folder.
+# Needs a token that can read every cited repo: a fine-grained PAT or GitHub App token with "Contents: read",
+# stored as the secret MAP_READ_TOKEN. Change MAP_DIR and the kit path to match your layout.
+name: verify-architecture-map
+on:
+  schedule: [{ cron: '0 6 * * 1' }]   # Mondays 06:00 UTC
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      MAP_DIR: docs/architecture-map
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { repository: majdukovic/evidence-architecture-map, path: tools/evidence-architecture-map }   # pin with ref: <tag>
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Let git read the cited repos
+        run: git config --global url."https://x-access-token:${{ secrets.MAP_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+      - name: Check every evidence reference
+        run: bash tools/evidence-architecture-map/skills/build-architecture-map/scripts/verify-ci.sh "$MAP_DIR"

@@ -1,0 +1,751 @@
+{
+  "layers": [
+    {
+      "id": "clients",
+      "label": "Clients"
+    },
+    {
+      "id": "entry",
+      "label": "Entry point"
+    },
+    {
+      "id": "services",
+      "label": "Backend services"
+    },
+    {
+      "id": "data",
+      "label": "Data stores"
+    },
+    {
+      "id": "external",
+      "label": "External services"
+    }
+  ],
+  "components": [
+    {
+      "id": "frontend",
+      "label": "Frontend",
+      "short": "Web shop (Go BFF)",
+      "layer": "entry",
+      "repo": "microservices-demo",
+      "gateway": true,
+      "purpose": "Go web server that renders the shop's HTML pages. Every page handler calls the backend services over gRPC and stitches the results together; it also proxies the chat box to the <b>Shopping assistant</b> over HTTP.",
+      "callout": "The shopper's identity is just a random UUID in the <code>shop_session-id</code> cookie; it is passed to backends as <code>user_id</code>.",
+      "exposes": [
+        "GET /",
+        "GET /product/{id}",
+        "GET /cart",
+        "POST /cart",
+        "POST /cart/empty",
+        "POST /setCurrency",
+        "POST /cart/checkout",
+        "GET /assistant",
+        "POST /bot",
+        "GET /product-meta/{ids}",
+        "GET /logout",
+        "GET /_healthz"
+      ],
+      "stores": [
+        "Cookie: shop_session-id",
+        "Cookie: shop_currency"
+      ],
+      "evidence": [
+        {
+          "ref": "microservices-demo:src/frontend/main.go:150",
+          "quote": "r.HandleFunc(baseUrl+\"/\", svc.homeHandler)"
+        },
+        {
+          "ref": "microservices-demo:src/frontend/main.go:171",
+          "quote": "http.ListenAndServe(addr+\":\"+srvPort, handler)"
+        },
+        {
+          "ref": "microservices-demo:src/frontend/Dockerfile:44",
+          "quote": "ENTRYPOINT [\"/src/server\"]"
+        },
+        {
+          "ref": "microservices-demo:kubernetes-manifests/frontend.yaml:130",
+          "quote": "type: LoadBalancer"
+        },
+        {
+          "ref": "microservices-demo:src/frontend/main.go:44",
+          "quote": "cookieSessionID = cookiePrefix + \"session-id\""
+        }
+      ]
+    },
+    {
+      "id": "productcatalogservice",
+      "label": "Product catalog service",
+      "short": "Lists products",
+      "layer": "services",
+      "repo": "microservices-demo",
+      "purpose": "Go gRPC service that returns the product list and single products. By default it loads the catalogue from the bundled <code>products.json</code>; if <code>ALLOYDB_CLUSTER_NAME</code> is set it reads it from an AlloyDB table instead.",
+      "exposes": [
+        "gRPC ListProducts",
+        "gRPC GetProduct",
+        "gRPC SearchProducts",
+        "port 3550"
+      ],
+      "stores": [
+        "products.json (default, read-only)",
+        "AlloyDB products table (optional)"
+      ],
+      "evidence": [
+        {
+          "ref": "microservices-demo:src/productcatalogservice/server.go:143",
+          "quote": "pb.RegisterProductCatalogServiceServer(srv, svc)"
+        },
+        {
+          "ref": "microservices-demo:src/productcatalogservice/catalog_loader.go:47",
+          "quote": "os.ReadFile(\"products.json\")"
+        },
+        {
+          "ref": "microservices-demo:src/productcatalogservice/catalog_loader.go:37",
+          "quote": "os.Getenv(\"ALLOYDB_CLUSTER_NAME\") != \"\""
+        },
+        {
+          "ref": "microservices-demo:protos/demo.proto:71",
+          "quote": "service ProductCatalogService {"
+        },
+        {
+          "ref": "microservices-demo:src/productcatalogservice/Dockerfile:43",
+          "quote": "EXPOSE 3550"
+        }
+      ],
+      "tests": [
+        {
+          "kind": "test",
+          "name": "TestGetProductExists",
+          "note": "GetProduct returns a known product (run in CI by ci-main)",
+          "ref": "microservices-demo:src/productcatalogservice/product_catalog_test.go:58",
+          "quote": "func TestGetProductExists(t *testing.T)"
+        },
+        {
+          "kind": "test",
+          "name": "TestListProducts",
+          "note": "ListProducts returns the catalogue",
+          "ref": "microservices-demo:src/productcatalogservice/product_catalog_test.go:79",
+          "quote": "func TestListProducts(t *testing.T)"
+        }
+      ]
+    },
+    {
+      "id": "currencyservice",
+      "label": "Currency service",
+      "short": "Converts prices",
+      "layer": "services",
+      "repo": "microservices-demo",
+      "purpose": "Node.js gRPC service that lists supported currencies and converts a <code>Money</code> amount via EUR, using fixed rates from a JSON file shipped in the image.",
+      "exposes": [
+        "gRPC GetSupportedCurrencies",
+        "gRPC Convert",
+        "port 7000 (from PORT)"
+      ],
+      "stores": [
+        "data/currency_conversion.json (static rates)"
+      ],
+      "evidence": [
+        {
+          "ref": "microservices-demo:src/currencyservice/server.js:185",
+          "quote": "shopProto.CurrencyService.service, {getSupportedCurrencies, convert}"
+        },
+        {
+          "ref": "microservices-demo:src/currencyservice/server.js:110",
+          "quote": "require('./data/currency_conversion.json')"
+        },
+        {
+          "ref": "microservices-demo:src/currencyservice/Dockerfile:45",
+          "quote": "ENTRYPOINT [ \"node\", \"server.js\" ]"
+        },
+        {
+          "ref": "microservices-demo:src/currencyservice/server.js:80",
+          "quote": "path.join(__dirname, './proto/demo.proto')"
+        },
+        {
+          "ref": "microservices-demo:src/currencyservice/server.js:83",
+          "quote": "const PORT = process.env.PORT;"
+        },
+        {
+          "ref": "microservices-demo:kubernetes-manifests/currencyservice.yaml:52",
+          "quote": "value: \"7000\""
+        }
+      ]
+    },
+    {
+      "id": "cartservice",
+      "label": "Cart service",
+      "short": "Holds shopping carts",
+      "layer": "services",
+      "repo": "microservices-demo",
+      "purpose": "C# (.NET) gRPC service that adds items to, reads and empties a shopper's cart, keyed by <code>user_id</code>. The store is chosen at start-up from env vars: Redis (default), Spanner, AlloyDB, or an in-process memory cache when none is set.",
+      "callout": "The class is called <code>RedisCartStore</code> even when it runs on the in-memory cache.",
+      "exposes": [
+        "gRPC AddItem",
+        "gRPC GetCart",
+        "gRPC EmptyCart",
+        "port 7070"
+      ],
+      "stores": [
+        "Redis: key = user_id, value = Cart protobuf (default)",
+        "Spanner: CartItems (optional)",
+        "AlloyDB: table named by ALLOYDB_TABLE_NAME (optional)"
+      ],
+      "evidence": [
+        {
+          "ref": "microservices-demo:src/cartservice/src/Startup.cs:74",
+          "quote": "endpoints.MapGrpcService<CartService>();"
+        },
+        {
+          "ref": "microservices-demo:src/cartservice/src/services/CartService.cs:34",
+          "quote": "public async override Task<Empty> AddItem("
+        },
+        {
+          "ref": "microservices-demo:src/cartservice/src/Startup.cs:40",
+          "quote": "services.AddSingleton<ICartStore, RedisCartStore>();"
+        },
+        {
+          "ref": "microservices-demo:src/cartservice/src/cartservice.csproj:17",
+          "quote": "Include=\"protos\\Cart.proto\""
+        },
+        {
+          "ref": "microservices-demo:src/cartservice/src/Dockerfile:40",
+          "quote": "EXPOSE 7070"
+        },
+        {
+          "ref": "microservices-demo:src/cartservice/src/cartstore/SpannerCartStore.cs:25",
+          "quote": "TableName = \"CartItems\";"
+        },
+        {
+          "ref": "microservices-demo:src/cartservice/src/cartstore/AlloyDBCartStore.cs:58",
+          "quote": "tableName = configuration[\"ALLOYDB_TABLE_NAME\"];"
+        }
+      ],
+      "tests": [
+        {
+          "kind": "test",
+          "name": "AddItem_New_Inserted",
+          "note": "Adds a new item over gRPC against an in-process test server; the test host sets no REDIS_ADDR, so Startup falls back to the in-memory cache. Run by ci-main via dotnet test",
+          "ref": "microservices-demo:src/cartservice/tests/CartServiceTests.cs:117",
+          "quote": "public async Task AddItem_New_Inserted()"
+        },
+        {
+          "kind": "test",
+          "name": "AddItem_ItemExists_Updated",
+          "note": "Adding the same product twice increments the quantity",
+          "ref": "microservices-demo:src/cartservice/tests/CartServiceTests.cs:71",
+          "quote": "public async Task AddItem_ItemExists_Updated()"
+        },
+        {
+          "kind": "test",
+          "name": "GetItem_NoAddItemBefore_EmptyCartReturned",
+          "note": "GetCart for an unknown user returns an empty cart",
+          "ref": "microservices-demo:src/cartservice/tests/CartServiceTests.cs:42",
+          "quote": "GetItem_NoAddItemBefore_EmptyCartReturned()"
+        }
+      ]
+    },
+    {
+      "id": "redis-cart",
+      "label": "Redis (carts)",
+      "short": "Default cart store",
+      "layer": "data",
+      "repo": "microservices-demo",
+      "purpose": "In-cluster Redis (<code>redis:alpine</code>) deployed next to the cart service in the default manifests. Its data volume is an <code>emptyDir</code>, so carts are lost when the pod is replaced.",
+      "callout": "The optional <code>memorystore</code>, <code>spanner</code> and <code>alloydb</code> kustomize components delete this Deployment and Service.",
+      "exposes": [
+        "Redis port 6379"
+      ],
+      "stores": [
+        "Carts (serialised Cart protobuf per user_id)"
+      ],
+      "evidence": [
+        {
+          "ref": "microservices-demo:kubernetes-manifests/cartservice.yaml:92",
+          "quote": "name: redis-cart"
+        },
+        {
+          "ref": "microservices-demo:kubernetes-manifests/cartservice.yaml:118",
+          "quote": "image: redis:alpine"
+        },
+        {
+          "ref": "microservices-demo:kubernetes-manifests/cartservice.yaml:141",
+          "quote": "emptyDir: {}"
+        },
+        {
+          "ref": "microservices-demo:helm-chart/values.yaml:202",
+          "quote": "type: redis"
+        }
+      ]
+    },
+    {
+      "id": "alloydb",
+      "label": "AlloyDB (optional)",
+      "short": "Optional Postgres store",
+      "layer": "data",
+      "repo": "microservices-demo",
+      "purpose": "Google Cloud AlloyDB for PostgreSQL, created outside Kubernetes with <code>gcloud</code>. The <code>alloydb</code> kustomize component points the cart and product catalogue services at it, and the shopping assistant always needs it for its vector search over product descriptions.",
+      "callout": "Not part of the default deployment: the kustomize components only pass placeholder connection settings such as <code>ALLOYDB_PRIMARY_IP_VAL</code>.",
+      "exposes": [],
+      "stores": [
+        "Carts table (optional, cart service)",
+        "Products table (optional, product catalogue)",
+        "Product description embeddings (shopping assistant)"
+      ],
+      "evidence": [
+        {
+          "ref": "microservices-demo:kustomize/components/shopping-assistant/scripts/1_deploy_alloydb_infra.sh:69",
+          "quote": "gcloud alloydb instances create"
+        },
+        {
+          "ref": "microservices-demo:kustomize/components/alloydb/kustomization.yaml:35",
+          "quote": "value: ALLOYDB_PRIMARY_IP_VAL"
+        },
+        {
+          "ref": "microservices-demo:kustomize/components/alloydb/kustomization.yaml:64",
+          "quote": "name: ALLOYDB_CLUSTER_NAME"
+        },
+        {
+          "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:52",
+          "quote": "AlloyDBVectorStore.create_sync("
+        }
+      ]
+    },
+    {
+      "id": "spanner",
+      "label": "Cloud Spanner (optional)",
+      "short": "Optional cart store",
+      "layer": "data",
+      "repo": "microservices-demo",
+      "purpose": "Google Cloud Spanner, used as the cart store only when the <code>spanner</code> kustomize component sets <code>SPANNER_CONNECTION_STRING</code>. Carts are rows in the <code>CartItems</code> table (default instance <code>onlineboutique</code>, database <code>carts</code>).",
+      "exposes": [],
+      "stores": [
+        "CartItems (optional, cart service)"
+      ],
+      "evidence": [
+        {
+          "ref": "microservices-demo:kustomize/components/spanner/kustomization.yaml:32",
+          "quote": "name: SPANNER_CONNECTION_STRING"
+        },
+        {
+          "ref": "microservices-demo:src/cartservice/src/cartstore/SpannerCartStore.cs:25",
+          "quote": "TableName = \"CartItems\";"
+        },
+        {
+          "ref": "microservices-demo:src/cartservice/src/cartstore/SpannerCartStore.cs:26",
+          "quote": "DefaultInstanceName = \"onlineboutique\";"
+        },
+        {
+          "ref": "microservices-demo:src/cartservice/src/cartstore/SpannerCartStore.cs:27",
+          "quote": "DefaultDatabaseName = \"carts\";"
+        }
+      ]
+    },
+    {
+      "id": "adservice",
+      "label": "Ad service",
+      "short": "Serves text ads",
+      "layer": "services",
+      "repo": "microservices-demo",
+      "purpose": "Java gRPC service that returns text ads for given category keys, or random ads when no key matches. Ads are a hard-coded in-memory map.",
+      "exposes": [
+        "gRPC GetAds",
+        "port 9555"
+      ],
+      "stores": [
+        "In-memory ads map (hard-coded)"
+      ],
+      "evidence": [
+        {
+          "ref": "microservices-demo:src/adservice/src/main/java/hipstershop/AdService.java:59",
+          "quote": ".addService(new AdServiceImpl())"
+        },
+        {
+          "ref": "microservices-demo:src/adservice/src/main/java/hipstershop/AdService.java:54",
+          "quote": "getOrDefault(\"PORT\", \"9555\")"
+        },
+        {
+          "ref": "microservices-demo:src/adservice/src/main/java/hipstershop/AdService.java:185",
+          "quote": "ImmutableListMultimap.<String, Ad>builder()"
+        },
+        {
+          "ref": "microservices-demo:src/adservice/build.gradle:96",
+          "quote": "mainClass.set('hipstershop.AdService')"
+        }
+      ]
+    },
+    {
+      "id": "recommendationservice",
+      "label": "Recommendation service",
+      "short": "Suggests products",
+      "layer": "services",
+      "repo": "microservices-demo",
+      "purpose": "Python gRPC service that fetches the whole catalogue from the <b>Product catalog</b> and returns up to 5 random product ids not in the request. It does not use the user id.",
+      "exposes": [
+        "gRPC ListRecommendations",
+        "port 8080"
+      ],
+      "stores": [],
+      "evidence": [
+        {
+          "ref": "microservices-demo:src/recommendationservice/recommendation_server.py:143",
+          "quote": "add_RecommendationServiceServicer_to_server(service, server)"
+        },
+        {
+          "ref": "microservices-demo:src/recommendationservice/recommendation_server.py:79",
+          "quote": "random.sample(range(num_products), num_return)"
+        },
+        {
+          "ref": "microservices-demo:src/recommendationservice/Dockerfile:55",
+          "quote": "ENTRYPOINT [\"python\", \"recommendation_server.py\"]"
+        }
+      ]
+    },
+    {
+      "id": "shoppingassistantservice",
+      "label": "Shopping assistant",
+      "short": "AI room-design chat (optional)",
+      "layer": "services",
+      "repo": "microservices-demo",
+      "purpose": "Optional Python Flask service behind the shop's chat box. It asks Gemini to describe an uploaded room photo, runs a vector similarity search over product descriptions in AlloyDB, then asks Gemini again for recommendations and returns the text. It reads the AlloyDB password from <b>Secret Manager</b> and opens the AlloyDB vector store when the module loads, so it cannot start without both.",
+      "callout": "Not in the default deployment: only added by the <code>shopping-assistant</code> kustomize component, and not available in the Helm chart.",
+      "exposes": [
+        "HTTP POST / (container 8080, Service port 80)"
+      ],
+      "stores": [],
+      "evidence": [
+        {
+          "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:65",
+          "quote": "@app.route(\"/\", methods=['POST'])"
+        },
+        {
+          "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:120",
+          "quote": "app.run(host='0.0.0.0', port=8080)"
+        },
+        {
+          "ref": "microservices-demo:kustomize/components/shopping-assistant/kustomization.yaml:18",
+          "quote": "- shoppingassistantservice.yaml"
+        },
+        {
+          "ref": "microservices-demo:helm-chart/values.yaml:216",
+          "quote": "@TODO: This service is not currently available in Helm."
+        },
+        {
+          "ref": "microservices-demo:src/shoppingassistantservice/Dockerfile:47",
+          "quote": "ENTRYPOINT [\"python\", \"shoppingassistantservice.py\"]"
+        },
+        {
+          "ref": "microservices-demo:kustomize/components/shopping-assistant/shoppingassistantservice.yaml:87",
+          "quote": "port: 80"
+        },
+        {
+          "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:52",
+          "quote": "vectorstore = AlloyDBVectorStore.create_sync("
+        }
+      ]
+    },
+    {
+      "id": "gemini-api",
+      "label": "Google Gemini API",
+      "short": "External LLM",
+      "layer": "external",
+      "repo": "microservices-demo",
+      "purpose": "Google's generative AI models, called by the Shopping assistant through LangChain (<code>gemini-1.5-flash</code> for chat and vision, <code>embedding-001</code> for embeddings). Only used when the shopping assistant is deployed.",
+      "exposes": [],
+      "stores": [],
+      "evidence": [
+        {
+          "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:72",
+          "quote": "ChatGoogleGenerativeAI(model=\"gemini-1.5-flash\")"
+        },
+        {
+          "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:55",
+          "quote": "GoogleGenerativeAIEmbeddings(model=\"models/embedding-001\")"
+        }
+      ]
+    },
+    {
+      "id": "secret-manager",
+      "label": "Google Secret Manager",
+      "short": "Holds the AlloyDB password",
+      "layer": "external",
+      "repo": "microservices-demo",
+      "purpose": "Google Cloud Secret Manager. The shopping assistant, and the cart and product catalogue services when they run on AlloyDB, read the AlloyDB password from the secret named by <code>ALLOYDB_SECRET_NAME</code> before connecting.",
+      "exposes": [],
+      "stores": [
+        "AlloyDB password (secret named by ALLOYDB_SECRET_NAME)"
+      ],
+      "evidence": [
+        {
+          "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:19",
+          "quote": "from google.cloud import secretmanager_v1"
+        },
+        {
+          "ref": "microservices-demo:src/productcatalogservice/catalog_loader.go:76",
+          "quote": "client.AccessSecretVersion(ctx, req)"
+        },
+        {
+          "ref": "microservices-demo:src/cartservice/src/cartstore/AlloyDBCartStore.cs:33",
+          "quote": "SecretManagerServiceClient.Create()"
+        }
+      ]
+    },
+    {
+      "id": "checkoutservice",
+      "label": "Checkout service",
+      "short": "Places orders",
+      "layer": "services",
+      "repo": "microservices-demo",
+      "purpose": "Go gRPC service that turns a shopper's cart into an order: it reads the cart, prices every item and the shipping in the shopper's currency, asks <b>Payment</b> to charge the card, asks <b>Shipping</b> to ship, empties the cart and asks <b>Email</b> to send a confirmation.",
+      "callout": "It stores nothing itself: the order id is a fresh UUID and the order only lives in the reply and the confirmation request.",
+      "exposes": [
+        "gRPC: hipstershop.CheckoutService/PlaceOrder",
+        "gRPC: grpc.health.v1.Health",
+        "port 5050"
+      ],
+      "stores": [],
+      "evidence": [
+        {
+          "ref": "microservices-demo:src/checkoutservice/main.go:142",
+          "quote": "pb.RegisterCheckoutServiceServer(srv, svc)"
+        },
+        {
+          "ref": "microservices-demo:src/checkoutservice/main.go:46",
+          "quote": "listenPort  = \"5050\""
+        },
+        {
+          "ref": "microservices-demo:src/checkoutservice/main.go:230",
+          "quote": "func (cs *checkoutService) PlaceOrder("
+        },
+        {
+          "ref": "microservices-demo:src/checkoutservice/main.go:233",
+          "quote": "orderID, err := uuid.NewUUID()"
+        },
+        {
+          "ref": "microservices-demo:protos/demo.proto:225",
+          "quote": "rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse)"
+        },
+        {
+          "ref": "microservices-demo:src/checkoutservice/Dockerfile:44",
+          "quote": "ENTRYPOINT [\"/src/checkoutservice\"]"
+        }
+      ],
+      "tests": [
+        {
+          "kind": "test",
+          "name": "TestSum",
+          "note": "Unit test of <code>money.Sum</code>, used to total an order (the money package tests do not cover <code>MultiplySlow</code>); not run by the CI workflows",
+          "ref": "microservices-demo:src/checkoutservice/money/money_test.go:202",
+          "quote": "func TestSum(t *testing.T) {"
+        }
+      ]
+    },
+    {
+      "id": "paymentservice",
+      "label": "Payment service",
+      "short": "Fake card charge",
+      "layer": "services",
+      "repo": "microservices-demo",
+      "purpose": "Node.js gRPC service that pretends to charge a card. It only validates the card number, accepts only VISA or MasterCard, rejects expired cards, logs the transaction and returns a random UUID as the transaction id. No payment provider is called and no money moves.",
+      "callout": "The CVV is never checked and no transaction is stored (the id is just <code>uuidv4()</code>), but every Charge call logs the full request, including card number and CVV, to stdout.",
+      "exposes": [
+        "gRPC: hipstershop.PaymentService/Charge",
+        "gRPC: grpc.health.v1.Health",
+        "port 50051 (from PORT)"
+      ],
+      "stores": [],
+      "evidence": [
+        {
+          "ref": "microservices-demo:src/paymentservice/server.js:89",
+          "quote": "hipsterShopPackage.PaymentService.service"
+        },
+        {
+          "ref": "microservices-demo:src/paymentservice/server.js:91",
+          "quote": "charge: HipsterShopServer.ChargeServiceHandler.bind(this)"
+        },
+        {
+          "ref": "microservices-demo:src/paymentservice/server.js:43",
+          "quote": "PaymentService#Charge invoked with request ${JSON.stringify("
+        },
+        {
+          "ref": "microservices-demo:src/paymentservice/charge.js:56",
+          "quote": "Verifies the credit card number and (pretend) charges the card."
+        },
+        {
+          "ref": "microservices-demo:src/paymentservice/charge.js:64",
+          "quote": "const cardInfo = cardValidator(cardNumber);"
+        },
+        {
+          "ref": "microservices-demo:src/paymentservice/charge.js:74",
+          "quote": "if (!(cardType === 'visa' || cardType === 'mastercard'))"
+        },
+        {
+          "ref": "microservices-demo:src/paymentservice/charge.js:80",
+          "quote": "throw new ExpiredCreditCard("
+        },
+        {
+          "ref": "microservices-demo:src/paymentservice/charge.js:85",
+          "quote": "return { transaction_id: uuidv4() };"
+        },
+        {
+          "ref": "microservices-demo:src/paymentservice/Dockerfile:45",
+          "quote": "ENTRYPOINT [ \"node\", \"index.js\" ]"
+        },
+        {
+          "ref": "microservices-demo:src/paymentservice/index.js:70",
+          "quote": "const PORT = process.env['PORT'];"
+        },
+        {
+          "ref": "microservices-demo:kubernetes-manifests/paymentservice.yaml:51",
+          "quote": "value: \"50051\""
+        }
+      ]
+    },
+    {
+      "id": "shippingservice",
+      "label": "Shipping service",
+      "short": "Fake shipping quotes",
+      "layer": "services",
+      "repo": "microservices-demo",
+      "purpose": "Go gRPC service that quotes and \"ships\" orders without any carrier. A quote is a flat 8.99 USD for any non-empty cart (0 for an empty one); shipping an order just makes up a random tracking id.",
+      "callout": "GetQuote looks only at item quantities, not at the address.",
+      "exposes": [
+        "gRPC: hipstershop.ShippingService/GetQuote",
+        "gRPC: hipstershop.ShippingService/ShipOrder",
+        "gRPC: grpc.health.v1.Health",
+        "port 50051"
+      ],
+      "stores": [],
+      "evidence": [
+        {
+          "ref": "microservices-demo:src/shippingservice/main.go:92",
+          "quote": "pb.RegisterShippingServiceServer(srv, svc)"
+        },
+        {
+          "ref": "microservices-demo:src/shippingservice/main.go:37",
+          "quote": "defaultPort = \"50051\""
+        },
+        {
+          "ref": "microservices-demo:src/shippingservice/quote.go:38",
+          "quote": "return CreateQuoteFromFloat(8.99)"
+        },
+        {
+          "ref": "microservices-demo:src/shippingservice/main.go:140",
+          "quote": "ShipOrder mocks that the requested items will be shipped."
+        },
+        {
+          "ref": "microservices-demo:src/shippingservice/main.go:147",
+          "quote": "id := CreateTrackingId(baseAddress)"
+        },
+        {
+          "ref": "microservices-demo:src/shippingservice/tracker.go:36",
+          "quote": "return 65 + uint32(rand.Intn(25))"
+        },
+        {
+          "ref": "microservices-demo:src/shippingservice/Dockerfile:44",
+          "quote": "ENTRYPOINT [\"/src/shippingservice\"]"
+        }
+      ],
+      "tests": [
+        {
+          "kind": "test",
+          "name": "TestGetQuote",
+          "note": "Unit test of the quote logic, run in CI",
+          "ref": "microservices-demo:src/shippingservice/shippingservice_test.go:27",
+          "quote": "func TestGetQuote(t *testing.T) {"
+        },
+        {
+          "kind": "test",
+          "name": "TestShipOrder",
+          "note": "Unit test of tracking id generation",
+          "ref": "microservices-demo:src/shippingservice/shippingservice_test.go:83",
+          "quote": "func TestShipOrder(t *testing.T) {"
+        }
+      ]
+    },
+    {
+      "id": "emailservice",
+      "label": "Email service",
+      "short": "Logs order emails",
+      "layer": "services",
+      "repo": "microservices-demo",
+      "purpose": "Python gRPC service that receives order confirmation requests. It always starts in dummy mode, which only writes a log line that a confirmation was requested; no email is sent.",
+      "callout": "The real sender class raises <code>cloud mail client not implemented</code>, and non-dummy mode raises too.",
+      "exposes": [
+        "gRPC: hipstershop.EmailService/SendOrderConfirmation",
+        "gRPC: grpc.health.v1.Health",
+        "port 8080 (Kubernetes Service port 5000)"
+      ],
+      "stores": [],
+      "evidence": [
+        {
+          "ref": "microservices-demo:src/emailservice/email_server.py:200",
+          "quote": "start(dummy_mode = True)"
+        },
+        {
+          "ref": "microservices-demo:src/emailservice/email_server.py:110",
+          "quote": "A request to send order confirmation email to {} has been received."
+        },
+        {
+          "ref": "microservices-demo:src/emailservice/email_server.py:63",
+          "quote": "raise Exception('cloud mail client not implemented')"
+        },
+        {
+          "ref": "microservices-demo:src/emailservice/email_server.py:124",
+          "quote": "raise Exception('non-dummy mode not implemented yet')"
+        },
+        {
+          "ref": "microservices-demo:src/emailservice/email_server.py:126",
+          "quote": "demo_pb2_grpc.add_EmailServiceServicer_to_server(service, server)"
+        },
+        {
+          "ref": "microservices-demo:src/emailservice/Dockerfile:54",
+          "quote": "ENTRYPOINT [ \"python\", \"email_server.py\" ]"
+        },
+        {
+          "ref": "microservices-demo:src/emailservice/email_server.py:129",
+          "quote": "port = os.environ.get('PORT', \"8080\")"
+        },
+        {
+          "ref": "microservices-demo:kubernetes-manifests/emailservice.yaml:82",
+          "quote": "port: 5000"
+        }
+      ]
+    },
+    {
+      "id": "loadgenerator",
+      "label": "Load generator",
+      "short": "Simulated shoppers",
+      "layer": "clients",
+      "repo": "microservices-demo",
+      "purpose": "Locust (Python) script that plays fake shoppers against the frontend over HTTP: browsing, changing currency, adding to cart, viewing the cart and checking out with generated VISA card numbers. CI uses its error count as the smoke test.",
+      "callout": "It always pays with a Faker-generated VISA number and an expiry year after the current one, so the payment service's card-type and expired-card rejections are never exercised.",
+      "exposes": [],
+      "stores": [],
+      "evidence": [
+        {
+          "ref": "microservices-demo:src/loadgenerator/Dockerfile:52",
+          "quote": "locust --host=\"http://${FRONTEND_ADDR}\" --headless"
+        },
+        {
+          "ref": "microservices-demo:src/loadgenerator/locustfile.py:90",
+          "quote": "class WebsiteUser(FastHttpUser):"
+        },
+        {
+          "ref": "microservices-demo:src/loadgenerator/locustfile.py:68",
+          "quote": "fake.credit_card_number(card_type=\"visa\")"
+        },
+        {
+          "ref": "microservices-demo:kubernetes-manifests/loadgenerator.yaml:80",
+          "quote": "image: loadgenerator"
+        },
+        {
+          "ref": "microservices-demo:src/loadgenerator/locustfile.py:70",
+          "quote": "random.randint(current_year, current_year + 70)"
+        },
+        {
+          "ref": "microservices-demo:src/loadgenerator/locustfile.py:60",
+          "quote": "current_year = datetime.datetime.now().year+1"
+        }
+      ]
+    }
+  ]
+}

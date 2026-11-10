@@ -1,0 +1,582 @@
+[
+  {
+    "from": "loadgenerator",
+    "to": "frontend",
+    "protocol": "HTTP",
+    "what": "Simulated shoppers browse, add to cart and check out (POST /cart/checkout) against the frontend",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/loadgenerator/locustfile.py:61",
+        "quote": "l.client.post(\"/cart/checkout\", {"
+      },
+      {
+        "ref": "microservices-demo:src/loadgenerator/Dockerfile:52",
+        "quote": "--host=\"http://${FRONTEND_ADDR}\""
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/loadgenerator.yaml:83",
+        "quote": "value: \"frontend:80\""
+      },
+      {
+        "ref": "microservices-demo:src/frontend/main.go:157",
+        "quote": "r.HandleFunc(baseUrl+\"/cart/checkout\", svc.placeOrderHandler)"
+      },
+      {
+        "ref": "microservices-demo:src/loadgenerator/locustfile.py:51",
+        "quote": "l.client.post(\"/cart\", {"
+      }
+    ]
+  },
+  {
+    "from": "frontend",
+    "to": "checkoutservice",
+    "protocol": "gRPC",
+    "what": "Places the order when the shopper submits the checkout form (PlaceOrder)",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/frontend/handlers.go:354",
+        "quote": "pb.NewCheckoutServiceClient(fe.checkoutSvcConn)"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/handlers.go:355",
+        "quote": "PlaceOrder(r.Context(), &pb.PlaceOrderRequest{"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/main.go:136",
+        "quote": "mustMapEnv(&svc.checkoutSvcAddr, \"CHECKOUT_SERVICE_ADDR\")"
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/frontend.yaml:80",
+        "quote": "value: \"checkoutservice:5050\""
+      }
+    ]
+  },
+  {
+    "from": "frontend",
+    "to": "shippingservice",
+    "protocol": "gRPC",
+    "what": "Gets a shipping quote (with no address) to show on the cart page (GetQuote)",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/frontend/rpc.go:88",
+        "quote": "pb.NewShippingServiceClient(fe.shippingSvcConn).GetQuote(ctx,"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/handlers.go:271",
+        "quote": "fe.getShippingQuote(r.Context(), cart, currentCurrency(r))"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/main.go:137",
+        "quote": "mustMapEnv(&svc.shippingSvcAddr, \"SHIPPING_SERVICE_ADDR\")"
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/frontend.yaml:78",
+        "quote": "value: \"shippingservice:50051\""
+      }
+    ]
+  },
+  {
+    "from": "checkoutservice",
+    "to": "cartservice",
+    "protocol": "gRPC",
+    "what": "Reads the shopper's cart (GetCart), then empties it after shipping (EmptyCart)",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/checkoutservice/main.go:325",
+        "quote": "pb.NewCartServiceClient(cs.cartSvcConn).GetCart(ctx"
+      },
+      {
+        "ref": "microservices-demo:src/checkoutservice/main.go:333",
+        "quote": "pb.NewCartServiceClient(cs.cartSvcConn).EmptyCart(ctx"
+      },
+      {
+        "ref": "microservices-demo:src/checkoutservice/main.go:113",
+        "quote": "mustMapEnv(&svc.cartSvcAddr, \"CART_SERVICE_ADDR\")"
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/checkoutservice.yaml:68",
+        "quote": "value: \"cartservice:7070\""
+      }
+    ]
+  },
+  {
+    "from": "checkoutservice",
+    "to": "productcatalogservice",
+    "protocol": "gRPC",
+    "what": "Looks up each cart item's product to get its USD price (GetProduct, once per item)",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/checkoutservice/main.go:344",
+        "quote": "cl.GetProduct(ctx, &pb.GetProductRequest{Id: item.GetProductId()})"
+      },
+      {
+        "ref": "microservices-demo:src/checkoutservice/main.go:112",
+        "quote": "\"PRODUCT_CATALOG_SERVICE_ADDR\")"
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/checkoutservice.yaml:58",
+        "quote": "value: \"productcatalogservice:3550\""
+      }
+    ]
+  },
+  {
+    "from": "checkoutservice",
+    "to": "currencyservice",
+    "protocol": "gRPC",
+    "what": "Converts each item price and the shipping quote from USD to the shopper's currency (Convert)",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/checkoutservice/main.go:360",
+        "quote": "pb.NewCurrencyServiceClient(cs.currencySvcConn).Convert("
+      },
+      {
+        "ref": "microservices-demo:src/checkoutservice/main.go:114",
+        "quote": "mustMapEnv(&svc.currencySvcAddr, \"CURRENCY_SERVICE_ADDR\")"
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/checkoutservice.yaml:66",
+        "quote": "value: \"currencyservice:7000\""
+      }
+    ]
+  },
+  {
+    "from": "checkoutservice",
+    "to": "shippingservice",
+    "protocol": "gRPC",
+    "what": "Gets a shipping quote for the cart (GetQuote), and after payment asks to ship the order (ShipOrder)",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/checkoutservice/main.go:314",
+        "quote": "pb.NewShippingServiceClient(cs.shippingSvcConn)."
+      },
+      {
+        "ref": "microservices-demo:src/checkoutservice/main.go:315",
+        "quote": "GetQuote(ctx, &pb.GetQuoteRequest{"
+      },
+      {
+        "ref": "microservices-demo:src/checkoutservice/main.go:387",
+        "quote": "pb.NewShippingServiceClient(cs.shippingSvcConn).ShipOrder(ctx"
+      },
+      {
+        "ref": "microservices-demo:src/checkoutservice/main.go:111",
+        "quote": "mustMapEnv(&svc.shippingSvcAddr, \"SHIPPING_SERVICE_ADDR\")"
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/checkoutservice.yaml:60",
+        "quote": "value: \"shippingservice:50051\""
+      }
+    ]
+  },
+  {
+    "from": "checkoutservice",
+    "to": "paymentservice",
+    "protocol": "gRPC",
+    "what": "Asks for the order total to be charged to the shopper's card (Charge)",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/checkoutservice/main.go:370",
+        "quote": "pb.NewPaymentServiceClient(cs.paymentSvcConn).Charge(ctx"
+      },
+      {
+        "ref": "microservices-demo:src/checkoutservice/main.go:116",
+        "quote": "mustMapEnv(&svc.paymentSvcAddr, \"PAYMENT_SERVICE_ADDR\")"
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/checkoutservice.yaml:62",
+        "quote": "value: \"paymentservice:50051\""
+      }
+    ]
+  },
+  {
+    "from": "checkoutservice",
+    "to": "emailservice",
+    "protocol": "gRPC",
+    "what": "Asks for an order confirmation to be sent to the shopper's email (SendOrderConfirmation); a failure is only logged",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/checkoutservice/main.go:380",
+        "quote": "pb.NewEmailServiceClient(cs.emailSvcConn).SendOrderConfirmation("
+      },
+      {
+        "ref": "microservices-demo:src/checkoutservice/main.go:115",
+        "quote": "mustMapEnv(&svc.emailSvcAddr, \"EMAIL_SERVICE_ADDR\")"
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/checkoutservice.yaml:64",
+        "quote": "value: \"emailservice:5000\""
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/emailservice.yaml:83",
+        "quote": "targetPort: 8080"
+      }
+    ]
+  },
+  {
+    "from": "frontend",
+    "to": "productcatalogservice",
+    "protocol": "gRPC",
+    "what": "Lists all products (home page) and fetches single products (product page, add to cart, cart lines, recommendations, /product-meta)",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/frontend/rpc.go:47",
+        "quote": "ListProducts(ctx, &pb.Empty{})"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/rpc.go:53",
+        "quote": "GetProduct(ctx, &pb.GetProductRequest{Id: id})"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/main.go:132",
+        "quote": "\"PRODUCT_CATALOG_SERVICE_ADDR\""
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/frontend.yaml:70",
+        "quote": "value: \"productcatalogservice:3550\""
+      }
+    ]
+  },
+  {
+    "from": "frontend",
+    "to": "currencyservice",
+    "protocol": "gRPC",
+    "what": "Gets the supported currency codes and converts product prices (home, product and cart pages) and the cart's shipping quote to the shopper's currency",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/frontend/rpc.go:32",
+        "quote": "GetSupportedCurrencies(ctx, &pb.Empty{})"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/rpc.go:82",
+        "quote": "Convert(ctx, &pb.CurrencyConversionRequest{"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/rpc.go:95",
+        "quote": "fe.convertCurrency(ctx, quote.GetCostUsd(), currency)"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/main.go:133",
+        "quote": "\"CURRENCY_SERVICE_ADDR\""
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/frontend.yaml:72",
+        "quote": "value: \"currencyservice:7000\""
+      }
+    ]
+  },
+  {
+    "from": "frontend",
+    "to": "cartservice",
+    "protocol": "gRPC",
+    "what": "Reads, adds to and empties the shopper's cart, keyed by the session id",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/frontend/rpc.go:58",
+        "quote": "GetCart(ctx, &pb.GetCartRequest{UserId: userID})"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/rpc.go:68",
+        "quote": "AddItem(ctx, &pb.AddItemRequest{"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/rpc.go:63",
+        "quote": "EmptyCart(ctx, &pb.EmptyCartRequest{UserId: userID})"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/main.go:134",
+        "quote": "\"CART_SERVICE_ADDR\""
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/frontend.yaml:74",
+        "quote": "value: \"cartservice:7070\""
+      }
+    ]
+  },
+  {
+    "from": "frontend",
+    "to": "recommendationservice",
+    "protocol": "gRPC",
+    "what": "Asks for recommended product ids on the product, cart and order-confirmation pages (not the home page)",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/frontend/rpc.go:100",
+        "quote": "ListRecommendations(ctx,"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/handlers.go:178",
+        "quote": "fe.getRecommendations(r.Context(), sessionID(r), []string{id})"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/handlers.go:266",
+        "quote": "getRecommendations(r.Context(), sessionID(r), cartIDs(cart))"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/handlers.go:378",
+        "quote": "fe.getRecommendations(r.Context(), sessionID(r), nil)"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/main.go:135",
+        "quote": "\"RECOMMENDATION_SERVICE_ADDR\""
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/frontend.yaml:76",
+        "quote": "value: \"recommendationservice:8080\""
+      }
+    ]
+  },
+  {
+    "from": "frontend",
+    "to": "adservice",
+    "protocol": "gRPC",
+    "what": "Fetches ads with a 100 ms timeout and shows one at random; errors are logged and ignored",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/frontend/rpc.go:123",
+        "quote": "GetAds(ctx, &pb.AdRequest{"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/rpc.go:120",
+        "quote": "context.WithTimeout(ctx, time.Millisecond*100)"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/main.go:138",
+        "quote": "\"AD_SERVICE_ADDR\""
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/frontend.yaml:82",
+        "quote": "value: \"adservice:9555\""
+      }
+    ]
+  },
+  {
+    "from": "frontend",
+    "to": "shoppingassistantservice",
+    "protocol": "HTTP",
+    "what": "Forwards the chat box's JSON body (message, image) from POST /bot to the assistant and returns its content as message",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/frontend/handlers.go:464",
+        "quote": "url := \"http://\" + fe.shoppingAssistantSvcAddr"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/handlers.go:465",
+        "quote": "http.NewRequest(http.MethodPost, url, r.Body)"
+      },
+      {
+        "ref": "microservices-demo:src/frontend/main.go:139",
+        "quote": "\"SHOPPING_ASSISTANT_SERVICE_ADDR\""
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/frontend.yaml:84",
+        "quote": "value: \"shoppingassistantservice:80\""
+      }
+    ]
+  },
+  {
+    "from": "recommendationservice",
+    "to": "productcatalogservice",
+    "protocol": "gRPC",
+    "what": "Loads the full product list on every ListRecommendations call to pick random ids",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/recommendationservice/recommendation_server.py:73",
+        "quote": "product_catalog_stub.ListProducts(demo_pb2.Empty())"
+      },
+      {
+        "ref": "microservices-demo:src/recommendationservice/recommendation_server.py:136",
+        "quote": "demo_pb2_grpc.ProductCatalogServiceStub(channel)"
+      },
+      {
+        "ref": "microservices-demo:src/recommendationservice/recommendation_server.py:131",
+        "quote": "os.environ.get('PRODUCT_CATALOG_SERVICE_ADDR', '')"
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/recommendationservice.yaml:61",
+        "quote": "value: \"productcatalogservice:3550\""
+      }
+    ]
+  },
+  {
+    "from": "productcatalogservice",
+    "to": "alloydb",
+    "protocol": "PostgreSQL",
+    "what": "Optional: when ALLOYDB_CLUSTER_NAME is set, loads the product catalogue from an AlloyDB table instead of products.json",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/productcatalogservice/catalog_loader.go:38",
+        "quote": "return loadCatalogFromAlloyDB(catalog)"
+      },
+      {
+        "ref": "microservices-demo:src/productcatalogservice/catalog_loader.go:133",
+        "quote": "pool.Query(context.Background(), query)"
+      },
+      {
+        "ref": "microservices-demo:kustomize/components/alloydb/kustomization.yaml:64",
+        "quote": "name: ALLOYDB_CLUSTER_NAME"
+      }
+    ]
+  },
+  {
+    "from": "productcatalogservice",
+    "to": "secret-manager",
+    "protocol": "SDK",
+    "what": "Optional (AlloyDB mode): reads the AlloyDB password before connecting",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/productcatalogservice/catalog_loader.go:64",
+        "quote": "secretmanager.NewClient(ctx)"
+      },
+      {
+        "ref": "microservices-demo:src/productcatalogservice/catalog_loader.go:76",
+        "quote": "client.AccessSecretVersion(ctx, req)"
+      }
+    ]
+  },
+  {
+    "from": "cartservice",
+    "to": "redis-cart",
+    "protocol": "Redis",
+    "what": "Default: reads and writes each cart as protobuf bytes under the user id",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/cartservice/src/Startup.cs:36",
+        "quote": "services.AddStackExchangeRedisCache(options =>"
+      },
+      {
+        "ref": "microservices-demo:src/cartservice/src/Startup.cs:29",
+        "quote": "Configuration[\"REDIS_ADDR\"]"
+      },
+      {
+        "ref": "microservices-demo:kubernetes-manifests/cartservice.yaml:51",
+        "quote": "value: \"redis-cart:6379\""
+      },
+      {
+        "ref": "microservices-demo:src/cartservice/src/cartstore/RedisCartStore.cs:60",
+        "quote": "await _cache.SetAsync(userId, cart.ToByteArray());"
+      }
+    ]
+  },
+  {
+    "from": "cartservice",
+    "to": "alloydb",
+    "protocol": "PostgreSQL",
+    "what": "Optional: when ALLOYDB_PRIMARY_IP is set (and no Redis or Spanner settings), stores carts in an AlloyDB table",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/cartservice/src/Startup.cs:49",
+        "quote": "services.AddSingleton<ICartStore, AlloyDBCartStore>();"
+      },
+      {
+        "ref": "microservices-demo:src/cartservice/src/cartstore/AlloyDBCartStore.cs:67",
+        "quote": "NpgsqlDataSource.Create(connectionString)"
+      },
+      {
+        "ref": "microservices-demo:kustomize/components/alloydb/kustomization.yaml:34",
+        "quote": "name: ALLOYDB_PRIMARY_IP"
+      }
+    ]
+  },
+  {
+    "from": "cartservice",
+    "to": "secret-manager",
+    "protocol": "SDK",
+    "what": "Optional (AlloyDB mode): reads the AlloyDB password when the AlloyDB cart store is created",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/cartservice/src/cartstore/AlloyDBCartStore.cs:33",
+        "quote": "SecretManagerServiceClient.Create()"
+      },
+      {
+        "ref": "microservices-demo:src/cartservice/src/cartstore/AlloyDBCartStore.cs:36",
+        "quote": "new SecretVersionName(projectId, secretId, \"latest\")"
+      }
+    ]
+  },
+  {
+    "from": "cartservice",
+    "to": "spanner",
+    "protocol": "Spanner",
+    "what": "Optional: when SPANNER_PROJECT or SPANNER_CONNECTION_STRING is set (and no REDIS_ADDR), stores carts in the CartItems table",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/cartservice/src/Startup.cs:44",
+        "quote": "services.AddSingleton<ICartStore, SpannerCartStore>();"
+      },
+      {
+        "ref": "microservices-demo:src/cartservice/src/cartstore/SpannerCartStore.cs:59",
+        "quote": "spannerConnection = new(databaseString)"
+      },
+      {
+        "ref": "microservices-demo:kustomize/components/spanner/kustomization.yaml:32",
+        "quote": "name: SPANNER_CONNECTION_STRING"
+      }
+    ]
+  },
+  {
+    "from": "shoppingassistantservice",
+    "to": "gemini-api",
+    "protocol": "HTTPS (SDK)",
+    "what": "Asks Gemini to describe the room image, embeds the search text, and asks Gemini for the final recommendation text",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:72",
+        "quote": "llm_vision = ChatGoogleGenerativeAI(model=\"gemini-1.5-flash\")"
+      },
+      {
+        "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:55",
+        "quote": "GoogleGenerativeAIEmbeddings(model=\"models/embedding-001\")"
+      },
+      {
+        "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:91",
+        "quote": "vectorstore.similarity_search(vector_search_prompt)"
+      },
+      {
+        "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:108",
+        "quote": "design_response = llm.invoke("
+      },
+      {
+        "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:82",
+        "quote": "response = llm_vision.invoke([message])"
+      }
+    ]
+  },
+  {
+    "from": "shoppingassistantservice",
+    "to": "alloydb",
+    "protocol": "PostgreSQL",
+    "what": "Runs a vector similarity search over product descriptions for each chat request; the vector store is opened at start-up",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:52",
+        "quote": "AlloyDBVectorStore.create_sync("
+      },
+      {
+        "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:57",
+        "quote": "content_column=\"description\""
+      },
+      {
+        "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:91",
+        "quote": "vectorstore.similarity_search(vector_search_prompt)"
+      },
+      {
+        "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:44",
+        "quote": "cluster=ALLOYDB_CLUSTER_NAME"
+      }
+    ]
+  },
+  {
+    "from": "shoppingassistantservice",
+    "to": "secret-manager",
+    "protocol": "SDK",
+    "what": "Reads the AlloyDB password from the secret named by ALLOYDB_SECRET_NAME once, at start-up",
+    "evidence": [
+      {
+        "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:19",
+        "quote": "from google.cloud import secretmanager_v1"
+      },
+      {
+        "ref": "microservices-demo:src/shoppingassistantservice/shoppingassistantservice.py:33",
+        "quote": "ALLOYDB_SECRET_NAME = os.environ[\"ALLOYDB_SECRET_NAME\"]"
+      }
+    ]
+  }
+]

@@ -1,0 +1,1425 @@
+[
+  {
+    "id": "browse-home",
+    "title": "Load the home page",
+    "tagline": "Products in your currency",
+    "featured": true,
+    "summary": "What the frontend's home handler calls, in order: currencies, product list, the shopper's cart (for the cart badge), one currency conversion <b>per product</b>, then an ad. It does <b>not</b> call the recommendation service.",
+    "actors": [
+      "frontend",
+      "currencyservice",
+      "productcatalogservice",
+      "cartservice",
+      "redis-cart",
+      "adservice"
+    ],
+    "steps": [
+      {
+        "from": "frontend",
+        "to": "frontend",
+        "kind": "self",
+        "label": "GET / and ensure a session id",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "GET",
+          "target": "/"
+        },
+        "noPayload": true,
+        "description": "Middleware sets a new random UUID in the <code>shop_session-id</code> cookie if the browser has none (or a fixed shared id when <code>ENABLE_SINGLE_SHARED_SESSION=true</code>, so every new browser shares one cart). The currency comes from the <code>shop_currency</code> cookie (default USD).",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/main.go:150",
+            "quote": "r.HandleFunc(baseUrl+\"/\", svc.homeHandler)"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/middleware.go:94",
+            "quote": "u, _ := uuid.NewRandom()"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/middleware.go:90",
+            "quote": "os.Getenv(\"ENABLE_SINGLE_SHARED_SESSION\") == \"true\""
+          },
+          {
+            "ref": "microservices-demo:kustomize/components/single-shared-session/kustomization.yaml:30",
+            "quote": "name: ENABLE_SINGLE_SHARED_SESSION"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:574",
+            "quote": "c, _ := r.Cookie(cookieCurrency)"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/main.go:40",
+            "quote": "defaultCurrency = \"USD\""
+          }
+        ]
+      },
+      {
+        "from": "frontend",
+        "to": "currencyservice",
+        "kind": "req",
+        "label": "GetSupportedCurrencies",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "CurrencyService/GetSupportedCurrencies"
+        },
+        "request": {},
+        "requestSchema": {
+          "ref": "microservices-demo:protos/demo.proto:52",
+          "quote": "message Empty {}"
+        },
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:62",
+            "quote": "currencies, err := fe.getCurrencies(r.Context())"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/rpc.go:32",
+            "quote": "GetSupportedCurrencies(ctx, &pb.Empty{})"
+          }
+        ]
+      },
+      {
+        "from": "currencyservice",
+        "to": "frontend",
+        "kind": "res",
+        "label": "Currency codes",
+        "protocol": "gRPC",
+        "response": {
+          "currency_codes": [
+            "EUR",
+            "USD",
+            "JPY",
+            "BGN",
+            "CZK",
+            "..."
+          ]
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:protos/demo.proto:163",
+          "quote": "message GetSupportedCurrenciesResponse {"
+        },
+        "description": "The frontend keeps only its whitelist (USD, EUR, CAD, JPY, GBP, TRY).",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/currencyservice/server.js:131",
+            "quote": "callback(null, {currency_codes: Object.keys(data)});"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/rpc.go:38",
+            "quote": "whitelistedCurrencies[c]"
+          }
+        ]
+      },
+      {
+        "from": "frontend",
+        "to": "productcatalogservice",
+        "kind": "req",
+        "label": "ListProducts",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "ProductCatalogService/ListProducts"
+        },
+        "request": {},
+        "requestSchema": {
+          "ref": "microservices-demo:protos/demo.proto:52",
+          "quote": "message Empty {}"
+        },
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:67",
+            "quote": "products, err := fe.getProducts(r.Context())"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/rpc.go:47",
+            "quote": "ListProducts(ctx, &pb.Empty{})"
+          }
+        ]
+      },
+      {
+        "from": "productcatalogservice",
+        "to": "frontend",
+        "kind": "res",
+        "label": "All products",
+        "protocol": "gRPC",
+        "response": {
+          "products": [
+            {
+              "id": "OLJCESPC7Z",
+              "name": "Sunglasses",
+              "picture": "/static/img/products/sunglasses.jpg",
+              "price_usd": {
+                "currency_code": "USD",
+                "units": 19,
+                "nanos": 990000000
+              },
+              "categories": [
+                "accessories"
+              ],
+              "...": "..."
+            },
+            "..."
+          ]
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:protos/demo.proto:89",
+          "quote": "message ListProductsResponse {"
+        },
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/productcatalogservice/product_catalog.go:44",
+            "quote": "&pb.ListProductsResponse{Products: p.parseCatalog()}"
+          }
+        ]
+      },
+      {
+        "from": "frontend",
+        "to": "cartservice",
+        "kind": "req",
+        "label": "GetCart",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "CartService/GetCart"
+        },
+        "request": {
+          "user_id": "3f1c9a2e-7b4d-4e1a-9c0f-2d5e8b6a1f00"
+        },
+        "requestSchema": {
+          "ref": "microservices-demo:src/cartservice/src/protos/Cart.proto:41",
+          "quote": "message GetCartRequest {"
+        },
+        "description": "Only used to show the number of items in the header.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:72",
+            "quote": "cart, err := fe.getCart(r.Context(), sessionID(r))"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:114",
+            "quote": "\"cart_size\":     cartSize(cart)"
+          }
+        ]
+      },
+      {
+        "from": "cartservice",
+        "to": "redis-cart",
+        "kind": "req",
+        "label": "Read the cart",
+        "protocol": "Redis",
+        "payloadNote": "internal",
+        "description": "Reads the bytes under the user id; a missing key gives an empty cart.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/cartservice/src/cartstore/RedisCartStore.cs:90",
+            "quote": "var value = await _cache.GetAsync(userId);"
+          },
+          {
+            "ref": "microservices-demo:src/cartservice/src/cartstore/RedisCartStore.cs:98",
+            "quote": "return new Hipstershop.Cart();"
+          }
+        ]
+      },
+      {
+        "from": "cartservice",
+        "to": "frontend",
+        "kind": "res",
+        "label": "Cart",
+        "protocol": "gRPC",
+        "response": {
+          "user_id": "3f1c9a2e-7b4d-4e1a-9c0f-2d5e8b6a1f00",
+          "items": [
+            {
+              "product_id": "OLJCESPC7Z",
+              "quantity": 2
+            }
+          ]
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:src/cartservice/src/protos/Cart.proto:45",
+          "quote": "message Cart {"
+        },
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/cartservice/src/services/CartService.cs:42",
+            "quote": "return _cartStore.GetCartAsync(request.UserId);"
+          }
+        ]
+      },
+      {
+        "from": "frontend",
+        "to": "currencyservice",
+        "kind": "req",
+        "label": "Convert (once per product)",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "CurrencyService/Convert"
+        },
+        "request": {
+          "from": {
+            "currency_code": "USD",
+            "units": 19,
+            "nanos": 990000000
+          },
+          "to_code": "EUR"
+        },
+        "requestSchema": {
+          "ref": "microservices-demo:protos/demo.proto:168",
+          "quote": "message CurrencyConversionRequest {"
+        },
+        "description": "Called in a loop for every product, even when the target is USD (the no-op shortcut is switched off).",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:84",
+            "quote": "fe.convertCurrency(r.Context(), p.GetPriceUsd(), currentCurrency(r))"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/rpc.go:27",
+            "quote": "avoidNoopCurrencyConversionRPC = false"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/rpc.go:82",
+            "quote": "Convert(ctx, &pb.CurrencyConversionRequest{"
+          }
+        ]
+      },
+      {
+        "from": "currencyservice",
+        "to": "frontend",
+        "kind": "res",
+        "label": "Money",
+        "protocol": "gRPC",
+        "response": {
+          "currency_code": "EUR",
+          "units": 17,
+          "nanos": 682441398
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:protos/demo.proto:146",
+          "quote": "message Money {"
+        },
+        "description": "Converts via EUR using the static rates file.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/currencyservice/server.js:160",
+            "quote": "result.currency_code = request.to_code;"
+          },
+          {
+            "ref": "microservices-demo:src/currencyservice/server.js:143",
+            "quote": "// Convert: from_currency --> EUR"
+          }
+        ]
+      },
+      {
+        "from": "frontend",
+        "to": "adservice",
+        "kind": "req",
+        "label": "GetAds (no context keys)",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "AdService/GetAds"
+        },
+        "request": {
+          "context_keys": []
+        },
+        "requestSchema": {
+          "ref": "microservices-demo:protos/demo.proto:247",
+          "quote": "message AdRequest {"
+        },
+        "description": "100 ms timeout; on error the page renders without an ad.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:116",
+            "quote": "fe.chooseAd(r.Context(), []string{}, log)"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/rpc.go:123",
+            "quote": "GetAds(ctx, &pb.AdRequest{"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:530",
+            "quote": "log.WithField(\"error\", err).Warn(\"failed to retrieve ads\")"
+          }
+        ]
+      },
+      {
+        "from": "adservice",
+        "to": "frontend",
+        "kind": "res",
+        "label": "Random ads",
+        "protocol": "gRPC",
+        "response": {
+          "ads": [
+            {
+              "redirect_url": "/product/2ZYFJ3GM2N",
+              "text": "Hairdryer for sale. 50% off."
+            }
+          ]
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:protos/demo.proto:252",
+          "quote": "message AdResponse {"
+        },
+        "description": "With no context keys the ad service returns random ads; the frontend picks one at random.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/adservice/src/main/java/hipstershop/AdService.java:105",
+            "quote": "allAds = service.getRandomAds();"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:533",
+            "quote": "return ads[rand.Intn(len(ads))]"
+          }
+        ]
+      },
+      {
+        "from": "frontend",
+        "to": "frontend",
+        "kind": "self",
+        "label": "Render the home template",
+        "protocol": "HTTP",
+        "payloadNote": "internal",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:110",
+            "quote": "templates.ExecuteTemplate(w, \"home\""
+          }
+        ]
+      }
+    ],
+    "tests": [
+      {
+        "name": "TestListProducts",
+        "why": "Unit test of the ListProducts RPC the home page uses (run in CI)",
+        "ref": "microservices-demo:src/productcatalogservice/product_catalog_test.go:79",
+        "quote": "func TestListProducts(t *testing.T)"
+      },
+      {
+        "name": "GetItem_NoAddItemBefore_EmptyCartReturned",
+        "why": "GetCart for a new session returns an empty cart",
+        "ref": "microservices-demo:src/cartservice/tests/CartServiceTests.cs:42",
+        "quote": "GetItem_NoAddItemBefore_EmptyCartReturned()"
+      }
+    ]
+  },
+  {
+    "id": "add-to-cart",
+    "title": "Add an item to the cart",
+    "tagline": "Product page to Redis",
+    "featured": true,
+    "summary": "The shopper picks a quantity on a product page and presses <b>Add to cart</b>. The browser posts a form to the frontend, which checks the product exists, asks the cart service to add it, and redirects to <code>/cart</code>. Default store: <b>redis-cart</b>.",
+    "actors": [
+      "frontend",
+      "productcatalogservice",
+      "cartservice",
+      "redis-cart"
+    ],
+    "steps": [
+      {
+        "from": "frontend",
+        "to": "frontend",
+        "kind": "self",
+        "label": "Receive the add-to-cart form",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "POST",
+          "target": "/cart"
+        },
+        "request": {
+          "product_id": "OLJCESPC7Z",
+          "quantity": "2"
+        },
+        "description": "The product page form posts <code>product_id</code> and <code>quantity</code>. The frontend validates quantity 1 to 10 (else 422) and takes the shopper id from the <code>shop_session-id</code> cookie.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/main.go:153",
+            "quote": "r.HandleFunc(baseUrl+\"/cart\", svc.addToCartHandler)"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:214",
+            "quote": "productID := r.FormValue(\"product_id\")"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/validator/validator.go:38",
+            "quote": "validate:\"required,gte=1,lte=10\""
+          },
+          {
+            "ref": "microservices-demo:src/frontend/templates/product.html:57",
+            "quote": "name=\"product_id\""
+          }
+        ]
+      },
+      {
+        "from": "frontend",
+        "to": "productcatalogservice",
+        "kind": "req",
+        "label": "Check the product exists",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "ProductCatalogService/GetProduct"
+        },
+        "request": {
+          "id": "OLJCESPC7Z"
+        },
+        "requestSchema": {
+          "ref": "microservices-demo:protos/demo.proto:93",
+          "quote": "message GetProductRequest {"
+        },
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:225",
+            "quote": "fe.getProduct(r.Context(), payload.ProductID)"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/rpc.go:53",
+            "quote": "GetProduct(ctx, &pb.GetProductRequest{Id: id})"
+          }
+        ]
+      },
+      {
+        "from": "productcatalogservice",
+        "to": "frontend",
+        "kind": "res",
+        "label": "Product (or NotFound)",
+        "protocol": "gRPC",
+        "response": {
+          "id": "OLJCESPC7Z",
+          "name": "Sunglasses",
+          "description": "Aviator sunglasses",
+          "picture": "/static/img/products/sunglasses.jpg",
+          "price_usd": {
+            "currency_code": "USD",
+            "units": 19,
+            "nanos": 990000000
+          },
+          "categories": [
+            "accessories"
+          ]
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:protos/demo.proto:77",
+          "quote": "message Product {"
+        },
+        "description": "An unknown id returns gRPC NotFound, which the frontend turns into a 500 page.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/productcatalogservice/product_catalog.go:52",
+            "quote": "if req.Id == product.Id {"
+          },
+          {
+            "ref": "microservices-demo:src/productcatalogservice/product_catalog.go:57",
+            "quote": "codes.NotFound, \"no product with ID %s\""
+          }
+        ]
+      },
+      {
+        "from": "frontend",
+        "to": "cartservice",
+        "kind": "req",
+        "label": "AddItem",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "CartService/AddItem"
+        },
+        "request": {
+          "user_id": "3f1c9a2e-7b4d-4e1a-9c0f-2d5e8b6a1f00",
+          "item": {
+            "product_id": "OLJCESPC7Z",
+            "quantity": 2
+          }
+        },
+        "requestSchema": {
+          "ref": "microservices-demo:src/cartservice/src/protos/Cart.proto:32",
+          "quote": "message AddItemRequest {"
+        },
+        "description": "<code>user_id</code> is the session cookie value. Cart service compiles its own <code>Cart.proto</code> (same messages as <code>protos/demo.proto</code>).",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:231",
+            "quote": "fe.insertCart(r.Context(), sessionID(r), p.GetId(), int32(payload.Quantity))"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/rpc.go:68",
+            "quote": "AddItem(ctx, &pb.AddItemRequest{"
+          },
+          {
+            "ref": "microservices-demo:src/cartservice/src/services/CartService.cs:36",
+            "quote": "_cartStore.AddItemAsync(request.UserId, request.Item.ProductId, request.Item.Quantity)"
+          }
+        ]
+      },
+      {
+        "from": "cartservice",
+        "to": "redis-cart",
+        "kind": "req",
+        "label": "Read, update, write the cart",
+        "protocol": "Redis",
+        "payloadNote": "internal",
+        "requestSchema": {
+          "ref": "microservices-demo:src/cartservice/src/protos/Cart.proto:45",
+          "quote": "message Cart {"
+        },
+        "description": "Reads the cart bytes stored under the user id, adds the item or increases its quantity, and writes the whole <code>Cart</code> protobuf back.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/cartservice/src/cartstore/RedisCartStore.cs:40",
+            "quote": "var value = await _cache.GetAsync(userId);"
+          },
+          {
+            "ref": "microservices-demo:src/cartservice/src/cartstore/RedisCartStore.cs:57",
+            "quote": "existingItem.Quantity += quantity;"
+          },
+          {
+            "ref": "microservices-demo:src/cartservice/src/cartstore/RedisCartStore.cs:60",
+            "quote": "await _cache.SetAsync(userId, cart.ToByteArray());"
+          }
+        ]
+      },
+      {
+        "from": "cartservice",
+        "to": "frontend",
+        "kind": "res",
+        "label": "Empty",
+        "protocol": "gRPC",
+        "noPayload": true,
+        "responseSchema": {
+          "ref": "microservices-demo:src/cartservice/src/protos/Cart.proto:50",
+          "quote": "message Empty {}"
+        },
+        "description": "A storage error comes back as gRPC FailedPrecondition.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/cartservice/src/services/CartService.cs:37",
+            "quote": "return Empty;"
+          },
+          {
+            "ref": "microservices-demo:src/cartservice/src/cartstore/RedisCartStore.cs:64",
+            "quote": "StatusCode.FailedPrecondition"
+          }
+        ]
+      },
+      {
+        "from": "frontend",
+        "to": "frontend",
+        "kind": "self",
+        "label": "Redirect to the cart page",
+        "protocol": "HTTP",
+        "noPayload": true,
+        "description": "Responds 302 with <code>location: /cart</code>; the browser then loads the cart page.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:235",
+            "quote": "w.Header().Set(\"location\", baseUrl + \"/cart\")"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:236",
+            "quote": "w.WriteHeader(http.StatusFound)"
+          }
+        ]
+      }
+    ],
+    "tests": [
+      {
+        "name": "AddItem_New_Inserted",
+        "why": "Calls cartservice AddItem over gRPC on an in-process test server with no REDIS_ADDR set, so Startup uses the in-memory cache, not Redis; covers only the cart part of this flow",
+        "ref": "microservices-demo:src/cartservice/tests/CartServiceTests.cs:117",
+        "quote": "public async Task AddItem_New_Inserted()"
+      },
+      {
+        "name": "AddItem_ItemExists_Updated",
+        "why": "Adding the same product twice increases quantity",
+        "ref": "microservices-demo:src/cartservice/tests/CartServiceTests.cs:71",
+        "quote": "public async Task AddItem_ItemExists_Updated()"
+      }
+    ]
+  },
+  {
+    "id": "place-order",
+    "title": "Place an order",
+    "tagline": "Checkout form to order confirmation page",
+    "featured": true,
+    "summary": "What happens when a shopper (or the load generator) submits the checkout form. The frontend validates the form and calls <b>Checkout</b>, which reads the cart, prices items and shipping in the shopper's currency, charges the card (a fake charge), ships (a fake shipment), empties the cart and asks for a confirmation email (only logged). Cart, pricing, payment and shipping failures abort the order; emptying the cart and the email are best effort.",
+    "actors": [
+      "loadgenerator",
+      "frontend",
+      "checkoutservice",
+      "cartservice",
+      "productcatalogservice",
+      "currencyservice",
+      "shippingservice",
+      "paymentservice",
+      "emailservice",
+      "recommendationservice"
+    ],
+    "steps": [
+      {
+        "from": "loadgenerator",
+        "to": "frontend",
+        "kind": "req",
+        "label": "Submit the checkout form",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "POST",
+          "target": "/cart/checkout"
+        },
+        "request": {
+          "email": "jo@example.com",
+          "street_address": "1 Main St",
+          "zip_code": "94043",
+          "city": "Mountain View",
+          "state": "CA",
+          "country": "United States",
+          "credit_card_number": "4111111111111111",
+          "credit_card_expiration_month": "1",
+          "credit_card_expiration_year": "2030",
+          "credit_card_cvv": "123"
+        },
+        "requestSchema": {
+          "ref": "microservices-demo:src/frontend/validator/validator.go:42",
+          "quote": "type PlaceOrderPayload struct {"
+        },
+        "description": "A form post (not JSON). The load generator sends the same fields a browser does. The frontend parses them and validates them (required fields, email format, card number format, month 1 to 12); a validation error returns HTTP 422 and checkout is never called.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/loadgenerator/locustfile.py:61",
+            "quote": "l.client.post(\"/cart/checkout\", {"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:325",
+            "quote": "email         = r.FormValue(\"email\")"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:350",
+            "quote": "http.StatusUnprocessableEntity"
+          }
+        ]
+      },
+      {
+        "from": "frontend",
+        "to": "checkoutservice",
+        "kind": "req",
+        "label": "PlaceOrder",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "hipstershop.CheckoutService/PlaceOrder"
+        },
+        "request": {
+          "user_id": "<session id>",
+          "user_currency": "EUR",
+          "address": {
+            "street_address": "1 Main St",
+            "city": "Mountain View",
+            "state": "CA",
+            "country": "United States",
+            "zip_code": 94043
+          },
+          "email": "jo@example.com",
+          "credit_card": {
+            "credit_card_number": "4111111111111111",
+            "credit_card_cvv": 123,
+            "credit_card_expiration_year": 2030,
+            "credit_card_expiration_month": 1
+          }
+        },
+        "requestSchema": {
+          "ref": "microservices-demo:protos/demo.proto:228",
+          "quote": "message PlaceOrderRequest {"
+        },
+        "description": "The user id is the frontend session id and the currency is the one the shopper picked. If PlaceOrder fails, the frontend shows an HTTP 500 page \"failed to complete the order\".",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:355",
+            "quote": "PlaceOrder(r.Context(), &pb.PlaceOrderRequest{"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:362",
+            "quote": "UserId:       sessionID(r),"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:372",
+            "quote": "\"failed to complete the order\"), http.StatusInternalServerError"
+          }
+        ]
+      },
+      {
+        "from": "checkoutservice",
+        "to": "cartservice",
+        "kind": "req",
+        "label": "GetCart",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "hipstershop.CartService/GetCart"
+        },
+        "request": {
+          "user_id": "<session id>"
+        },
+        "response": {
+          "user_id": "<session id>",
+          "items": [
+            {
+              "product_id": "OLJCESPC7Z",
+              "quantity": 2
+            }
+          ]
+        },
+        "requestSchema": {
+          "ref": "microservices-demo:protos/demo.proto:43",
+          "quote": "message GetCartRequest {"
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:protos/demo.proto:47",
+          "quote": "message Cart {"
+        },
+        "description": "Fatal: an error aborts the order with gRPC status Internal (\"cart failure\").",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:290",
+            "quote": "cartItems, err := cs.getUserCart(ctx, userID)"
+          },
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:292",
+            "quote": "fmt.Errorf(\"cart failure: %+v\", err)"
+          },
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:240",
+            "quote": "return nil, status.Errorf(codes.Internal, err.Error())"
+          }
+        ]
+      },
+      {
+        "from": "checkoutservice",
+        "to": "productcatalogservice",
+        "kind": "req",
+        "label": "GetProduct (per cart item)",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "hipstershop.ProductCatalogService/GetProduct"
+        },
+        "request": {
+          "id": "OLJCESPC7Z"
+        },
+        "response": {
+          "id": "OLJCESPC7Z",
+          "name": "Sunglasses",
+          "price_usd": {
+            "currency_code": "USD",
+            "units": 19,
+            "nanos": 990000000
+          },
+          "...": "..."
+        },
+        "requestSchema": {
+          "ref": "microservices-demo:protos/demo.proto:93",
+          "quote": "message GetProductRequest {"
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:protos/demo.proto:77",
+          "quote": "message Product {"
+        },
+        "description": "Called once for each cart item, one after another, each followed by the currency conversion in the next step. Fatal: an error aborts the order (Internal).",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:344",
+            "quote": "cl.GetProduct(ctx, &pb.GetProductRequest{Id: item.GetProductId()})"
+          },
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:346",
+            "quote": "fmt.Errorf(\"failed to get product #%q\", item.GetProductId())"
+          }
+        ]
+      },
+      {
+        "from": "checkoutservice",
+        "to": "currencyservice",
+        "kind": "req",
+        "label": "Convert item price (per cart item)",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "hipstershop.CurrencyService/Convert"
+        },
+        "request": {
+          "from": {
+            "currency_code": "USD",
+            "units": 19,
+            "nanos": 990000000
+          },
+          "to_code": "EUR"
+        },
+        "response": {
+          "currency_code": "EUR",
+          "units": 17,
+          "nanos": 682441398
+        },
+        "requestSchema": {
+          "ref": "microservices-demo:protos/demo.proto:168",
+          "quote": "message CurrencyConversionRequest {"
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:protos/demo.proto:146",
+          "quote": "message Money {"
+        },
+        "description": "Fatal: an error aborts the order (Internal). The conversion call uses <code>context.TODO()</code>, not the request context.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:348",
+            "quote": "price, err := cs.convertCurrency(ctx, product.GetPriceUsd(), userCurrency)"
+          },
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:360",
+            "quote": "Convert(context.TODO(), &pb.CurrencyConversionRequest{"
+          }
+        ]
+      },
+      {
+        "from": "checkoutservice",
+        "to": "shippingservice",
+        "kind": "req",
+        "label": "GetQuote",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "hipstershop.ShippingService/GetQuote"
+        },
+        "request": {
+          "address": {
+            "street_address": "1 Main St",
+            "city": "Mountain View",
+            "state": "CA",
+            "country": "United States",
+            "zip_code": 94043
+          },
+          "items": [
+            {
+              "product_id": "OLJCESPC7Z",
+              "quantity": 2
+            }
+          ]
+        },
+        "response": {
+          "cost_usd": {
+            "currency_code": "USD",
+            "units": 8,
+            "nanos": 990000000
+          }
+        },
+        "requestSchema": {
+          "ref": "microservices-demo:protos/demo.proto:112",
+          "quote": "message GetQuoteRequest {"
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:protos/demo.proto:117",
+          "quote": "message GetQuoteResponse {"
+        },
+        "description": "The shipping service returns a flat 8.99 USD for any non-empty cart. Fatal: an error aborts the order (Internal, \"shipping quote failure\").",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:298",
+            "quote": "shippingUSD, err := cs.quoteShipping(ctx, address, cartItems)"
+          },
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:300",
+            "quote": "fmt.Errorf(\"shipping quote failure: %+v\", err)"
+          },
+          {
+            "ref": "microservices-demo:src/shippingservice/quote.go:38",
+            "quote": "return CreateQuoteFromFloat(8.99)"
+          }
+        ]
+      },
+      {
+        "from": "checkoutservice",
+        "to": "currencyservice",
+        "kind": "req",
+        "label": "Convert shipping cost",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "hipstershop.CurrencyService/Convert"
+        },
+        "request": {
+          "from": {
+            "currency_code": "USD",
+            "units": 8,
+            "nanos": 990000000
+          },
+          "to_code": "EUR"
+        },
+        "response": {
+          "currency_code": "EUR",
+          "units": 7,
+          "nanos": 952233525
+        },
+        "requestSchema": {
+          "ref": "microservices-demo:protos/demo.proto:168",
+          "quote": "message CurrencyConversionRequest {"
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:protos/demo.proto:146",
+          "quote": "message Money {"
+        },
+        "description": "Fatal: an error aborts the order (Internal).",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:302",
+            "quote": "shippingPrice, err := cs.convertCurrency(ctx, shippingUSD, userCurrency)"
+          },
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:304",
+            "quote": "failed to convert shipping cost to currency"
+          }
+        ]
+      },
+      {
+        "from": "checkoutservice",
+        "to": "checkoutservice",
+        "kind": "self",
+        "label": "Total the order",
+        "noPayload": true,
+        "description": "Adds the localised shipping cost and price times quantity for every item, in the shopper's currency, using the local <code>money</code> package.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:246",
+            "quote": "total = money.Must(money.Sum(total, *prep.shippingCostLocalized))"
+          },
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:248",
+            "quote": "money.MultiplySlow(*it.Cost, uint32(it.GetItem().GetQuantity()))"
+          }
+        ]
+      },
+      {
+        "from": "checkoutservice",
+        "to": "paymentservice",
+        "kind": "req",
+        "label": "Charge the card",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "hipstershop.PaymentService/Charge"
+        },
+        "request": {
+          "amount": {
+            "currency_code": "EUR",
+            "units": 43,
+            "nanos": 317116321
+          },
+          "credit_card": {
+            "credit_card_number": "4111111111111111",
+            "credit_card_cvv": 123,
+            "credit_card_expiration_year": 2030,
+            "credit_card_expiration_month": 1
+          }
+        },
+        "response": {
+          "transaction_id": "5d0c1f3e-7a2b-4c9d-8e1f-2a3b4c5d6e7f"
+        },
+        "requestSchema": {
+          "ref": "microservices-demo:src/paymentservice/proto/demo.proto:186",
+          "quote": "message ChargeRequest {"
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:src/paymentservice/proto/demo.proto:191",
+          "quote": "message ChargeResponse {"
+        },
+        "description": "No real charge: the payment service validates the card number, accepts only VISA or MasterCard, rejects expired cards and returns a random UUID. Fatal: a rejection or error aborts the order (Internal, \"failed to charge card\"). The schema shown is the proto copy the payment service loads at run time.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:252",
+            "quote": "txID, err := cs.chargeCard(ctx, &total, req.CreditCard)"
+          },
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:254",
+            "quote": "\"failed to charge card: %+v\""
+          },
+          {
+            "ref": "microservices-demo:src/paymentservice/charge.js:85",
+            "quote": "return { transaction_id: uuidv4() };"
+          },
+          {
+            "ref": "microservices-demo:src/paymentservice/server.js:28",
+            "quote": "this.loadProto(path.join(protoRoot, 'demo.proto'))"
+          }
+        ]
+      },
+      {
+        "from": "checkoutservice",
+        "to": "shippingservice",
+        "kind": "req",
+        "label": "ShipOrder",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "hipstershop.ShippingService/ShipOrder"
+        },
+        "request": {
+          "address": {
+            "street_address": "1 Main St",
+            "city": "Mountain View",
+            "state": "CA",
+            "country": "United States",
+            "zip_code": 94043
+          },
+          "items": [
+            {
+              "product_id": "OLJCESPC7Z",
+              "quantity": 2
+            }
+          ]
+        },
+        "response": {
+          "tracking_id": "QX-28314-144712093"
+        },
+        "requestSchema": {
+          "ref": "microservices-demo:protos/demo.proto:121",
+          "quote": "message ShipOrderRequest {"
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:protos/demo.proto:126",
+          "quote": "message ShipOrderResponse {"
+        },
+        "description": "No real shipment: the shipping service makes up a random tracking id. Fatal: an error returns gRPC status Unavailable, after the card has already been \"charged\"; nothing reverses the charge.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:258",
+            "quote": "shippingTrackingID, err := cs.shipOrder(ctx, req.Address, prep.cartItems)"
+          },
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:260",
+            "quote": "status.Errorf(codes.Unavailable, \"shipping error: %+v\", err)"
+          },
+          {
+            "ref": "microservices-demo:src/shippingservice/main.go:147",
+            "quote": "id := CreateTrackingId(baseAddress)"
+          }
+        ]
+      },
+      {
+        "from": "checkoutservice",
+        "to": "cartservice",
+        "kind": "req",
+        "label": "EmptyCart (result ignored)",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "hipstershop.CartService/EmptyCart"
+        },
+        "request": {
+          "user_id": "<session id>"
+        },
+        "response": {},
+        "requestSchema": {
+          "ref": "microservices-demo:protos/demo.proto:39",
+          "quote": "message EmptyCartRequest {"
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:protos/demo.proto:52",
+          "quote": "message Empty {}"
+        },
+        "description": "Not fatal: the returned error is thrown away, so the order still succeeds if the cart could not be emptied.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:263",
+            "quote": "_ = cs.emptyUserCart(ctx, req.UserId)"
+          }
+        ]
+      },
+      {
+        "from": "checkoutservice",
+        "to": "emailservice",
+        "kind": "req",
+        "label": "SendOrderConfirmation (failure only logged)",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "hipstershop.EmailService/SendOrderConfirmation"
+        },
+        "request": {
+          "email": "jo@example.com",
+          "order": {
+            "order_id": "<uuid>",
+            "shipping_tracking_id": "QX-28314-144712093",
+            "shipping_cost": {
+              "currency_code": "EUR",
+              "units": 7,
+              "nanos": 952233525
+            },
+            "shipping_address": {
+              "...": "..."
+            },
+            "items": [
+              {
+                "item": {
+                  "product_id": "OLJCESPC7Z",
+                  "quantity": 2
+                },
+                "cost": {
+                  "currency_code": "EUR",
+                  "units": 17,
+                  "nanos": 682441398
+                }
+              }
+            ]
+          }
+        },
+        "response": {},
+        "requestSchema": {
+          "ref": "microservices-demo:protos/demo.proto:216",
+          "quote": "message SendOrderConfirmationRequest {"
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:protos/demo.proto:52",
+          "quote": "message Empty {}"
+        },
+        "description": "Not fatal: an error is only logged as a warning. The email service runs in dummy mode and only logs that a confirmation was requested; no email is sent.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:273",
+            "quote": "cs.sendOrderConfirmation(ctx, req.Email, orderResult)"
+          },
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:274",
+            "quote": "log.Warnf(\"failed to send order confirmation to %q: %+v\""
+          },
+          {
+            "ref": "microservices-demo:src/emailservice/email_server.py:110",
+            "quote": "A request to send order confirmation email to {} has been received."
+          }
+        ]
+      },
+      {
+        "from": "checkoutservice",
+        "to": "frontend",
+        "kind": "res",
+        "label": "PlaceOrderResponse",
+        "protocol": "gRPC",
+        "response": {
+          "order": {
+            "order_id": "a3b1c2d4-0f1e-11ef-9a2b-0242ac120002",
+            "shipping_tracking_id": "QX-28314-144712093",
+            "shipping_cost": {
+              "currency_code": "EUR",
+              "units": 7,
+              "nanos": 952233525
+            },
+            "shipping_address": {
+              "...": "..."
+            },
+            "items": [
+              {
+                "item": {
+                  "product_id": "OLJCESPC7Z",
+                  "quantity": 2
+                },
+                "cost": {
+                  "currency_code": "EUR",
+                  "units": 17,
+                  "nanos": 682441398
+                }
+              }
+            ]
+          }
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:protos/demo.proto:237",
+          "quote": "message PlaceOrderResponse {"
+        },
+        "description": "The order id is a time-based UUID made by checkout. The response carries no total and no payment transaction id; the transaction id is only logged.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:266",
+            "quote": "OrderId:            orderID.String(),"
+          },
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:256",
+            "quote": "payment went through (transaction_id: %s)"
+          },
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:278",
+            "quote": "resp := &pb.PlaceOrderResponse{Order: orderResult}"
+          }
+        ]
+      },
+      {
+        "from": "frontend",
+        "to": "recommendationservice",
+        "kind": "req",
+        "label": "ListRecommendations (error ignored)",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "hipstershop.RecommendationService/ListRecommendations"
+        },
+        "request": {
+          "user_id": "<session id>",
+          "product_ids": []
+        },
+        "response": {
+          "product_ids": [
+            "66VCHSJNUP",
+            "9SIQT8TOJO"
+          ]
+        },
+        "requestSchema": {
+          "ref": "microservices-demo:protos/demo.proto:60",
+          "quote": "message ListRecommendationsRequest {"
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:protos/demo.proto:65",
+          "quote": "message ListRecommendationsResponse {"
+        },
+        "description": "For the \"you may also like\" strip on the confirmation page. Not fatal: the error is discarded, and a failure in the GetProduct lookups that follow also empties the list.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:378",
+            "quote": "recommendations, _ := fe.getRecommendations(r.Context(), sessionID(r), nil)"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/rpc.go:100",
+            "quote": "ListRecommendations(ctx,"
+          }
+        ]
+      },
+      {
+        "from": "frontend",
+        "to": "productcatalogservice",
+        "kind": "req",
+        "label": "GetProduct (per recommended id)",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "hipstershop.ProductCatalogService/GetProduct"
+        },
+        "request": {
+          "id": "66VCHSJNUP"
+        },
+        "response": {
+          "id": "66VCHSJNUP",
+          "name": "Tank Top",
+          "price_usd": {
+            "currency_code": "USD",
+            "units": 18,
+            "nanos": 990000000
+          },
+          "...": "..."
+        },
+        "requestSchema": {
+          "ref": "microservices-demo:protos/demo.proto:93",
+          "quote": "message GetProductRequest {"
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:protos/demo.proto:77",
+          "quote": "message Product {"
+        },
+        "description": "Called once for each recommended id, one after another (here also for 9SIQT8TOJO). Any error drops all recommendations: the whole lookup returns an error, which the confirmation page ignores. At most four products are kept for the page.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/rpc.go:107",
+            "quote": "p, err := fe.getProduct(ctx, v)"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/rpc.go:109",
+            "quote": "failed to get recommended product info"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/rpc.go:53",
+            "quote": "GetProduct(ctx, &pb.GetProductRequest{Id: id})"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/rpc.go:114",
+            "quote": "out = out[:4]"
+          }
+        ]
+      },
+      {
+        "from": "frontend",
+        "to": "currencyservice",
+        "kind": "req",
+        "label": "GetSupportedCurrencies",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "hipstershop.CurrencyService/GetSupportedCurrencies"
+        },
+        "request": {},
+        "response": {
+          "currency_codes": [
+            "EUR",
+            "USD",
+            "JPY",
+            "BGN",
+            "CZK",
+            "..."
+          ]
+        },
+        "requestSchema": {
+          "ref": "microservices-demo:protos/demo.proto:52",
+          "quote": "message Empty {}"
+        },
+        "responseSchema": {
+          "ref": "microservices-demo:protos/demo.proto:163",
+          "quote": "message GetSupportedCurrenciesResponse {"
+        },
+        "description": "The response carries every code in the rates file; the frontend keeps only its whitelist (USD, EUR, CAD, JPY, GBP, TRY). Fatal for the page only: an error shows an HTTP 500 page even though the order was already placed. Before this call the frontend recomputes the total paid itself from shipping cost and items.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:386",
+            "quote": "currencies, err := fe.getCurrencies(r.Context())"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:388",
+            "quote": "\"could not retrieve currencies\"), http.StatusInternalServerError"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:380",
+            "quote": "totalPaid := *order.GetOrder().GetShippingCost()"
+          },
+          {
+            "ref": "microservices-demo:src/currencyservice/server.js:131",
+            "quote": "callback(null, {currency_codes: Object.keys(data)});"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/rpc.go:38",
+            "quote": "whitelistedCurrencies[c]"
+          }
+        ]
+      },
+      {
+        "from": "frontend",
+        "to": "loadgenerator",
+        "kind": "res",
+        "label": "Order confirmation page",
+        "protocol": "HTTP",
+        "payloadNote": "unknown",
+        "response": "HTML page rendered from the \"order\" template (order, total_paid, recommendations, currencies)",
+        "description": "The frontend renders the order confirmation HTML page.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:392",
+            "quote": "templates.ExecuteTemplate(w, \"order\""
+          },
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:396",
+            "quote": "\"total_paid\":      &totalPaid,"
+          }
+        ]
+      }
+    ],
+    "tests": [
+      {
+        "name": "smoke test job",
+        "why": "Deploys the whole app and fails if the load generator, which includes checkout in its task mix, reports any request errors",
+        "ref": "microservices-demo:.github/workflows/ci-main.yaml:147",
+        "quote": "ERROR_COUNT=$(kubectl logs -l app=loadgenerator"
+      }
+    ]
+  }
+]

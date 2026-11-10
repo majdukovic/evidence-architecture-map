@@ -1,0 +1,427 @@
+[
+  {
+    "group": "How it is built",
+    "items": [
+      {
+        "text": "Each service is its own container image built by Skaffold from its folder under <code>src/</code> (<code>src/cartservice/src</code> for the cart), for both amd64 and arm64.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:skaffold.yaml:20",
+            "quote": "platforms: [\"linux/amd64\", \"linux/arm64\"]"
+          },
+          {
+            "ref": "microservices-demo:skaffold.yaml:47",
+            "quote": "context: src/frontend"
+          },
+          {
+            "ref": "microservices-demo:skaffold.yaml:43",
+            "quote": "context: src/cartservice/src"
+          }
+        ]
+      },
+      {
+        "text": "The read path is polyglot: frontend and product catalog in Go, cart in C# (.NET), currency in Node.js, ads in Java, recommendations and the shopping assistant in Python.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/Dockerfile:18",
+            "quote": "golang:1.27.0-alpine"
+          },
+          {
+            "ref": "microservices-demo:src/cartservice/src/Dockerfile:19",
+            "quote": "mcr.microsoft.com/dotnet/sdk"
+          },
+          {
+            "ref": "microservices-demo:src/currencyservice/Dockerfile:18",
+            "quote": "node:24.20.0-alpine"
+          },
+          {
+            "ref": "microservices-demo:src/adservice/Dockerfile:18",
+            "quote": "eclipse-temurin:25.0.4_7-jdk-noble"
+          },
+          {
+            "ref": "microservices-demo:src/recommendationservice/Dockerfile:18",
+            "quote": "python:3.14.7-alpine"
+          }
+        ]
+      },
+      {
+        "text": "<code>protos/demo.proto</code> (package <code>hipstershop</code>) is the shared gRPC contract. The Go services and the Python gRPC services (email, recommendation) generate code from it; adservice copies it in and generates code with Gradle; the currency and payment services copy it and load it at run time. The cart service is the exception and compiles its own <code>Cart.proto</code>.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:protos/demo.proto:17",
+            "quote": "package hipstershop;"
+          },
+          {
+            "ref": "microservices-demo:src/checkoutservice/genproto.sh:20",
+            "quote": "protodir=../../protos"
+          },
+          {
+            "ref": "microservices-demo:src/emailservice/genproto.sh:19",
+            "quote": "python -m grpc_tools.protoc -I../../protos"
+          },
+          {
+            "ref": "microservices-demo:src/recommendationservice/genproto.sh:24",
+            "quote": "../../protos/demo.proto"
+          },
+          {
+            "ref": "microservices-demo:src/adservice/genproto.sh:21",
+            "quote": "cp ../../protos/demo.proto src/main/proto"
+          },
+          {
+            "ref": "microservices-demo:src/adservice/build.gradle:2",
+            "quote": "id 'com.google.protobuf'"
+          },
+          {
+            "ref": "microservices-demo:src/currencyservice/genproto.sh:21",
+            "quote": "cp -r ../../protos/* ./proto"
+          },
+          {
+            "ref": "microservices-demo:src/currencyservice/server.js:80",
+            "quote": "path.join(__dirname, './proto/demo.proto')"
+          },
+          {
+            "ref": "microservices-demo:src/paymentservice/server.js:28",
+            "quote": "this.loadProto(path.join(protoRoot, 'demo.proto'))"
+          },
+          {
+            "ref": "microservices-demo:src/cartservice/src/cartservice.csproj:17",
+            "quote": "Include=\"protos\\Cart.proto\""
+          }
+        ]
+      },
+      {
+        "text": "ci-main runs Go unit tests for shippingservice and productcatalogservice and <code>dotnet test</code> for the cart service; ci-pr runs the same plus the frontend's <code>validator</code> package. No currency, ad, recommendation, checkout or email tests run in CI.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:.github/workflows/ci-main.yaml:48",
+            "quote": "for SERVICE in \"shippingservice\" \"productcatalogservice\"; do"
+          },
+          {
+            "ref": "microservices-demo:.github/workflows/ci-main.yaml:57",
+            "quote": "dotnet test src/cartservice/"
+          },
+          {
+            "ref": "microservices-demo:.github/workflows/ci-pr.yaml:54",
+            "quote": "\"shippingservice\" \"productcatalogservice\" \"frontend/validator\""
+          }
+        ]
+      },
+      {
+        "text": "The order path mixes languages: checkout and shipping are Go (distroless images), payment is Node.js, email and the load generator are Python (Locust).",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/checkoutservice/Dockerfile:18",
+            "quote": "golang:1.27.0-alpine"
+          },
+          {
+            "ref": "microservices-demo:src/shippingservice/Dockerfile:32",
+            "quote": "FROM gcr.io/distroless/static"
+          },
+          {
+            "ref": "microservices-demo:src/paymentservice/Dockerfile:18",
+            "quote": "node:24.20.0-alpine"
+          },
+          {
+            "ref": "microservices-demo:src/emailservice/Dockerfile:18",
+            "quote": "python:3.14.7-alpine"
+          },
+          {
+            "ref": "microservices-demo:src/loadgenerator/Dockerfile:18",
+            "quote": "python:3.14.7-alpine"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "group": "Default deployment vs optional parts",
+    "items": [
+      {
+        "text": "The default deployment is <code>kubernetes-manifests</code>, which Skaffold's <code>app</code> config deploys: the 10 core services plus in-cluster Redis. Its kustomization comments out the load generator (Skaffold deploys it through a separate <code>loadgenerator</code> config) and lists 10 of the 15 kustomize components (including shopping-assistant), all commented out.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:kubernetes-manifests/kustomization.yaml:24",
+            "quote": "# - loadgenerator.yaml"
+          },
+          {
+            "ref": "microservices-demo:kubernetes-manifests/kustomization.yaml:29",
+            "quote": "# components:"
+          },
+          {
+            "ref": "microservices-demo:kubernetes-manifests/kustomization.yaml:35",
+            "quote": "# - ../kustomize/components/shopping-assistant"
+          },
+          {
+            "ref": "microservices-demo:skaffold.yaml:58",
+            "quote": "- kubernetes-manifests"
+          },
+          {
+            "ref": "microservices-demo:skaffold.yaml:113",
+            "quote": "- ./kubernetes-manifests/loadgenerator.yaml"
+          }
+        ]
+      },
+      {
+        "text": "The frontend is the only service exposed outside the cluster, through a LoadBalancer Service <code>frontend-external</code>.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:kubernetes-manifests/frontend.yaml:126",
+            "quote": "name: frontend-external"
+          },
+          {
+            "ref": "microservices-demo:kubernetes-manifests/frontend.yaml:130",
+            "quote": "type: LoadBalancer"
+          }
+        ]
+      },
+      {
+        "text": "Backend addresses are plain Kubernetes Service names in env vars; the frontend panics at start-up if any of them, including <code>SHOPPING_ASSISTANT_SERVICE_ADDR</code>, is unset.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/main.go:220",
+            "quote": "panic(fmt.Sprintf(\"environment variable %q not set\", envKey))"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/main.go:139",
+            "quote": "\"SHOPPING_ASSISTANT_SERVICE_ADDR\""
+          }
+        ]
+      },
+      {
+        "text": "The cart store is picked from env vars at start-up: <code>REDIS_ADDR</code> (default, <code>redis-cart:6379</code>), then Spanner, then AlloyDB, else an in-process memory cache.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/cartservice/src/Startup.cs:34",
+            "quote": "if (!string.IsNullOrEmpty(redisAddress))"
+          },
+          {
+            "ref": "microservices-demo:src/cartservice/src/Startup.cs:54",
+            "quote": "services.AddDistributedMemoryCache();"
+          },
+          {
+            "ref": "microservices-demo:kubernetes-manifests/cartservice.yaml:51",
+            "quote": "value: \"redis-cart:6379\""
+          }
+        ]
+      },
+      {
+        "text": "The <code>memorystore</code>, <code>spanner</code> and <code>alloydb</code> kustomize components each delete the in-cluster <code>redis-cart</code>; memorystore points <code>REDIS_ADDR</code> at a managed Redis instead.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:kustomize/components/memorystore/kustomization.yaml:31",
+            "quote": "value: \"REDIS_CONNECTION_STRING\""
+          },
+          {
+            "ref": "microservices-demo:kustomize/components/memorystore/kustomization.yaml:38",
+            "quote": "$patch: delete"
+          },
+          {
+            "ref": "microservices-demo:kustomize/components/spanner/kustomization.yaml:48",
+            "quote": "$patch: delete"
+          },
+          {
+            "ref": "microservices-demo:kustomize/components/alloydb/kustomization.yaml:92",
+            "quote": "$patch: delete"
+          }
+        ]
+      },
+      {
+        "text": "The <code>alloydb</code> component also switches the product catalogue from <code>products.json</code> to AlloyDB, not just the cart.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:kustomize/components/alloydb/kustomization.yaml:57",
+            "quote": "name: productcatalogservice"
+          },
+          {
+            "ref": "microservices-demo:kustomize/components/alloydb/kustomization.yaml:64",
+            "quote": "- name: ALLOYDB_CLUSTER_NAME"
+          }
+        ]
+      },
+      {
+        "text": "The shopping assistant is opt-in: the <code>shopping-assistant</code> component adds its Deployment and sets <code>ENABLE_ASSISTANT=true</code> on the frontend, which only shows the assistant link in the header. The Helm chart cannot deploy it.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:kustomize/components/shopping-assistant/kustomization.yaml:31",
+            "quote": "- name: ENABLE_ASSISTANT"
+          },
+          {
+            "ref": "microservices-demo:src/frontend/handlers.go:559",
+            "quote": "\"assistant_enabled\": assistantEnabled,"
+          },
+          {
+            "ref": "microservices-demo:helm-chart/values.yaml:219",
+            "quote": "create: false"
+          }
+        ]
+      },
+      {
+        "text": "Helm defaults the cart store to in-cluster Redis (<code>cartDatabase.type: redis</code>, <code>inClusterRedis.create: true</code>).",
+        "evidence": [
+          {
+            "ref": "microservices-demo:helm-chart/values.yaml:202",
+            "quote": "type: redis"
+          },
+          {
+            "ref": "microservices-demo:helm-chart/values.yaml:205",
+            "quote": "create: true"
+          }
+        ]
+      },
+      {
+        "text": "Setting <code>ENABLE_SINGLE_SHARED_SESSION=true</code> on the frontend makes every new visitor share one hard-coded session id (and so one cart).",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/frontend/middleware.go:90",
+            "quote": "os.Getenv(\"ENABLE_SINGLE_SHARED_SESSION\") == \"true\""
+          },
+          {
+            "ref": "microservices-demo:src/frontend/middleware.go:91",
+            "quote": "Hard coded user id, shared across sessions"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "group": "How it ships",
+    "items": [
+      {
+        "text": "Plain Kubernetes manifests live in <code>kubernetes-manifests/</code>, one file per service, tied together by a kustomization. That kustomization leaves the load generator out (commented), because skaffold deploys it as a separate module.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:kubernetes-manifests/kustomization.yaml:20",
+            "quote": "- checkoutservice.yaml"
+          },
+          {
+            "ref": "microservices-demo:kubernetes-manifests/kustomization.yaml:24",
+            "quote": "# - loadgenerator.yaml # During development, the loadgenerator module"
+          },
+          {
+            "ref": "microservices-demo:skaffold.yaml:99",
+            "quote": "name: loadgenerator"
+          },
+          {
+            "ref": "microservices-demo:skaffold.yaml:113",
+            "quote": "- ./kubernetes-manifests/loadgenerator.yaml"
+          }
+        ]
+      },
+      {
+        "text": "Skaffold builds every service image from its folder under <code>src/</code>, tags the <code>app</code> images with the git commit and deploys with kubectl: the <code>app</code> config renders the <code>kubernetes-manifests</code> kustomization, and a second <code>loadgenerator</code> config applies <code>kubernetes-manifests/loadgenerator.yaml</code> as raw YAML.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:skaffold.yaml:37",
+            "quote": "context: src/checkoutservice"
+          },
+          {
+            "ref": "microservices-demo:skaffold.yaml:51",
+            "quote": "gitCommit: {}"
+          },
+          {
+            "ref": "microservices-demo:skaffold.yaml:58",
+            "quote": "- kubernetes-manifests"
+          },
+          {
+            "ref": "microservices-demo:skaffold.yaml:60",
+            "quote": "kubectl: {}"
+          },
+          {
+            "ref": "microservices-demo:skaffold.yaml:112",
+            "quote": "rawYaml:"
+          },
+          {
+            "ref": "microservices-demo:skaffold.yaml:113",
+            "quote": "- ./kubernetes-manifests/loadgenerator.yaml"
+          }
+        ]
+      },
+      {
+        "text": "Two other ways to deploy exist: a kustomize base with optional components (all commented out by default, the base includes the load generator), and a Helm chart <code>onlineboutique</code> with a <code>create</code> switch per service.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:kustomize/kustomization.yaml:18",
+            "quote": "- base"
+          },
+          {
+            "ref": "microservices-demo:kustomize/base/kustomization.yaml:24",
+            "quote": "- loadgenerator.yaml"
+          },
+          {
+            "ref": "microservices-demo:helm-chart/Chart.yaml:16",
+            "quote": "name: onlineboutique"
+          },
+          {
+            "ref": "microservices-demo:helm-chart/values.yaml:84",
+            "quote": "checkoutService:"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "group": "How services find each other",
+    "items": [
+      {
+        "text": "Services find each other through <code>*_SERVICE_ADDR</code> environment variables set to Kubernetes Service names and ports; checkout panics at start-up if any of its six is missing.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:205",
+            "quote": "panic(fmt.Sprintf(\"environment variable %q not set\", envKey))"
+          },
+          {
+            "ref": "microservices-demo:src/checkoutservice/main.go:116",
+            "quote": "mustMapEnv(&svc.paymentSvcAddr, \"PAYMENT_SERVICE_ADDR\")"
+          },
+          {
+            "ref": "microservices-demo:kubernetes-manifests/checkoutservice.yaml:61",
+            "quote": "- name: PAYMENT_SERVICE_ADDR"
+          },
+          {
+            "ref": "microservices-demo:kubernetes-manifests/checkoutservice.yaml:62",
+            "quote": "value: \"paymentservice:50051\""
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "group": "How it is tested",
+    "items": [
+      {
+        "text": "CI on pushes to main and release branches runs Go unit tests for shipping and product catalog plus the C# cart tests, then deploys to a GKE cluster with skaffold and fails if the load generator logs any errors.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:.github/workflows/ci-main.yaml:48",
+            "quote": "for SERVICE in \"shippingservice\" \"productcatalogservice\"; do"
+          },
+          {
+            "ref": "microservices-demo:.github/workflows/ci-main.yaml:57",
+            "quote": "dotnet test src/cartservice/"
+          },
+          {
+            "ref": "microservices-demo:.github/workflows/ci-main.yaml:112",
+            "quote": "skaffold run --default-repo="
+          },
+          {
+            "ref": "microservices-demo:.github/workflows/ci-main.yaml:148",
+            "quote": "if [[ \"$ERROR_COUNT\" -gt \"0\" ]]; then"
+          }
+        ]
+      },
+      {
+        "text": "Separate workflows lint and render the Helm chart and build the kustomize variants.",
+        "evidence": [
+          {
+            "ref": "microservices-demo:.github/workflows/helm-chart-ci.yaml:35",
+            "quote": "helm lint --strict"
+          },
+          {
+            "ref": "microservices-demo:.github/workflows/kustomize-build-ci.yaml:44",
+            "quote": "kustomize build $test"
+          }
+        ]
+      }
+    ]
+  }
+]
