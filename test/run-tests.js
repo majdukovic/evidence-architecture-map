@@ -114,6 +114,28 @@ sh(orders2, 'git', 'fetch', '-q', path.join(tmp, 'remote', 'orders.git'), 'main:
 r = node(path.join(SCRIPTS, 'verify.js'), map);
 check('verify fails a reference next to a credential', /application.conf:2  the cited lines look like they hold a credential/.test(r.stdout), r.stdout);
 
+/* show.js prints numbered lines from origin/HEAD, not the working tree */
+fs.writeFileSync(path.join(orders2, 'src/main/scala/OrdersRoutes.scala'), 'uncommitted change\n');
+r = node(path.join(SCRIPTS, 'show.js'), orders2, 'src/main/scala/OrdersRoutes.scala', '5', '5');
+check('show.js prints a numbered line from the default branch', r.status === 0 && /^5 {2}.*path\("orders"\)/.test(r.stdout), r.stdout + r.stderr);
+
+/* merge.js combines fragments, joins evidence on the same connection, and reports conflicts */
+const frag = path.join(tmp, 'frag.json');
+fs.writeFileSync(frag, JSON.stringify({
+  components: [{ id: 'fraud', label: 'Fraud check', short: 'Optional', layer: 'api', repo: 'payments', purpose: 'Scores charges.', condition: 'Only when FRAUD_URL is set',
+    evidence: [E('payments:app/Routes.scala:1', 'path("charges")')] }, { ...comps.components[1], purpose: 'Changed text' }],
+  connections: [{ from: 'payments', to: 'fraud', protocol: 'HTTP', condition: 'Only when FRAUD_URL is set', evidence: [E('payments:app/Routes.scala:1', 'complete(charge())')] },
+    { from: 'orders', to: 'payments', protocol: 'HTTP', evidence: [E('payments:app/Routes.scala:1', 'path("charges")')] }],
+}));
+r = node(path.join(SCRIPTS, 'merge.js'), map, frag);
+const merged = JSON.parse(fs.readFileSync(path.join(map, 'connections.json'), 'utf8'));
+check('merge.js adds new items, joins evidence and reports a conflicting component', r.status === 1 && /Added 1 components, 1 connections/.test(r.stdout) &&
+  /component payments/.test(r.stdout) && merged.find(c => c.to === 'payments').evidence.length === 2, r.stdout + r.stderr);
+r = node(path.join(SCRIPTS, 'build.js'), map);
+const html2 = fs.readFileSync(path.join(map, 'architecture.html'), 'utf8'), md2 = fs.readFileSync(path.join(map, 'ARCHITECTURE.md'), 'utf8');
+check('conditional parts are carried to the page and drawn dashed in Mermaid', r.status === 0 && html2.includes('Only when FRAUD_URL is set') &&
+  md2.includes('n_payments -.->|"HTTP"| n_fraud') && md2.includes('*Optional: Only when FRAUD_URL is set*'), r.stdout + r.stderr);
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(failed ? `\n${failed} test(s) failed` : '\nall tests passed');
 process.exit(failed ? 1 : 0);

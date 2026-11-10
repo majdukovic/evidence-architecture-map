@@ -1,0 +1,511 @@
+[
+  {
+    "group": "How it runs",
+    "items": [
+      {
+        "text": "The gateway has Spring Cloud Gateway routes for vets-service, visits-service, customers-service and genai-service, each using an <code>lb://</code> service-name URI and a path prefix of <code>/api/vet</code>, <code>/api/visit</code>, <code>/api/customer</code> and <code>/api/genai</code>. The routes live in the api-gateway module's own application.yml, not in the config repo's api-gateway.yml.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:22",
+            "quote": "uri: lb://vets-service"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:40",
+            "quote": "uri: lb://genai-service"
+          }
+        ]
+      },
+      {
+        "text": "Every gateway route has a default CircuitBreaker filter that forwards to <code>/fallback</code>, which answers 503.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:14",
+            "quote": "fallbackUri: forward:/fallback"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/FallbackController.java:15",
+            "quote": "HttpStatus.SC_SERVICE_UNAVAILABLE"
+          }
+        ]
+      },
+      {
+        "text": "The gateway serves the Vue index.html for browser (text/html) navigation that is not under /api, /actuator, /webjars or /fallback.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java:66",
+            "quote": "new ClassPathResource(\"static/index.html\")"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java:72",
+            "quote": "RequestPredicates.path(\"/api/**\").negate()"
+          }
+        ]
+      },
+      {
+        "text": "Gateway, customers-service and visits-service read their configuration from the Config server on port 8888 (<code>CONFIG_SERVER_URL</code>, default localhost; <code>config-server</code> host under the docker profile).",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:5",
+            "quote": "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888/}"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/resources/application.yml:13",
+            "quote": "configserver:http://config-server:8888"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-visits-service/src/main/resources/application.yml:13",
+            "quote": "configserver:http://config-server:8888"
+          }
+        ]
+      },
+      {
+        "text": "The gateway is fixed at port 8080 in all profiles; under the docker profile customers-service (8081) and visits-service (8082) get fixed ports and all register with Eureka at discovery-server:8761. By default services use a random port.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices-config:api-gateway.yml:5",
+            "quote": "port: 8080"
+          },
+          {
+            "ref": "spring-petclinic-microservices-config:customers-service.yml:16",
+            "quote": "port: 8081"
+          },
+          {
+            "ref": "spring-petclinic-microservices-config:visits-service.yml:16",
+            "quote": "port: 8082"
+          },
+          {
+            "ref": "spring-petclinic-microservices-config:visits-service.yml:20",
+            "quote": "defaultZone: http://discovery-server:8761/eureka/"
+          },
+          {
+            "ref": "spring-petclinic-microservices-config:application.yml:5",
+            "quote": "port: 0"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "group": "Data",
+    "items": [
+      {
+        "text": "By default each of customers-service and visits-service uses its own embedded HSQLDB, initialised from <code>db/hsqldb/schema.sql</code> and <code>data.sql</code>; the shared default config sets no JDBC URL. The <code>mysql</code> profile in the shared config switches to a MySQL schema and data scripts.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices-config:application.yml:13",
+            "quote": "schema-locations: classpath*:db/hsqldb/schema.sql"
+          },
+          {
+            "ref": "spring-petclinic-microservices-config:application.yml:14",
+            "quote": "data-locations: classpath*:db/hsqldb/data.sql"
+          },
+          {
+            "ref": "spring-petclinic-microservices-config:application.yml:98",
+            "quote": "on-profile: mysql"
+          },
+          {
+            "ref": "spring-petclinic-microservices-config:application.yml:105",
+            "quote": "schema-locations: classpath*:db/mysql/schema.sql"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/pom.xml:71",
+            "quote": "<artifactId>hsqldb</artifactId>"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-visits-service/pom.xml:64",
+            "quote": "<artifactId>hsqldb</artifactId>"
+          }
+        ]
+      },
+      {
+        "text": "Hibernate does not create tables (<code>ddl-auto: none</code>); schema comes from the SQL scripts.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices-config:application.yml:27",
+            "quote": "ddl-auto: none"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "group": "How it is built",
+    "items": [
+      {
+        "text": "Java 17 is the project Java version, and CI builds with JDK 17.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:pom.xml:30",
+            "quote": "<java.version>17</java.version>"
+          },
+          {
+            "ref": "spring-petclinic-microservices:.github/workflows/maven-build.yml:18",
+            "quote": "java: [ '17' ]"
+          }
+        ]
+      },
+      {
+        "text": "Maven multi-module build: a parent pom of packaging pom lists eight modules (admin, customers, vets, visits, genai, config, discovery, api-gateway).",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:pom.xml:16",
+            "quote": "<packaging>pom</packaging>"
+          },
+          {
+            "ref": "spring-petclinic-microservices:pom.xml:24",
+            "quote": "<module>spring-petclinic-config-server</module>"
+          }
+        ]
+      },
+      {
+        "text": "Spring Boot 4.0.1 parent with Spring Cloud 2025.1.0.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:pom.xml:9",
+            "quote": "<version>4.0.1</version>"
+          },
+          {
+            "ref": "spring-petclinic-microservices:pom.xml:32",
+            "quote": "<spring-cloud.version>2025.1.0</spring-cloud.version>"
+          }
+        ]
+      },
+      {
+        "text": "CI is a GitHub Actions workflow that runs a Maven package build on push and pull request to main.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:.github/workflows/maven-build.yml:4",
+            "quote": "name: Java CI with Maven"
+          },
+          {
+            "ref": "spring-petclinic-microservices:.github/workflows/maven-build.yml:29",
+            "quote": "mvn -B package --file pom.xml"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "group": "How it ships and runs",
+    "items": [
+      {
+        "text": "Docker images are built with the buildDocker Maven profile (<code>./mvnw clean install -P buildDocker</code>) from one shared docker/Dockerfile and tagged springcommunity/&lt;artifactId&gt;.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:README.md:36",
+            "quote": "./mvnw clean install -P buildDocker"
+          },
+          {
+            "ref": "spring-petclinic-microservices:pom.xml:195",
+            "quote": "${docker.image.prefix}/${project.artifactId}"
+          },
+          {
+            "ref": "spring-petclinic-microservices:pom.xml:37",
+            "quote": "<docker.image.prefix>springcommunity</docker.image.prefix>"
+          }
+        ]
+      },
+      {
+        "text": "The shared Dockerfile is a two-stage build on eclipse-temurin:17 that extracts Spring Boot layers and starts with JarLauncher; it sets SPRING_PROFILES_ACTIVE=docker.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:docker/Dockerfile:1",
+            "quote": "FROM eclipse-temurin:17 AS builder"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker/Dockerfile:14",
+            "quote": "ENV SPRING_PROFILES_ACTIVE=docker"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker/Dockerfile:28",
+            "quote": "JarLauncher"
+          }
+        ]
+      },
+      {
+        "text": "docker-compose.yml runs config-server, discovery-server, customers, visits, vets, genai, api-gateway, tracing-server (zipkin), admin-server, grafana-server and prometheus-server. Databases are not part of compose.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:2",
+            "quote": "config-server:"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:143",
+            "quote": "grafana-server:"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:153",
+            "quote": "prometheus-server:"
+          }
+        ]
+      },
+      {
+        "text": "Startup order: discovery-server waits for a healthy config-server; customers, visits, vets, genai, api-gateway and admin-server wait for both config-server and discovery-server to be healthy (depends_on condition service_healthy). Tracing, Grafana and Prometheus have no depends_on.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:30",
+            "quote": "config-server:"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:31",
+            "quote": "condition: service_healthy"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:137",
+            "quote": "condition: service_healthy"
+          }
+        ]
+      },
+      {
+        "text": "Published ports: api-gateway 8080, customers 8081, visits 8082, vets 8083, genai 8084, config-server 8888, discovery-server 8761, admin-server 9090, zipkin 9411, Grafana 3030 (container 3000), Prometheus 9091 (container 9090).",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:114",
+            "quote": "8080:8080"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:15",
+            "quote": "8888:8888"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:33",
+            "quote": "8761:8761"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:139",
+            "quote": "9090:9090"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:151",
+            "quote": "3030:3000"
+          }
+        ]
+      },
+      {
+        "text": "Every compose container has a memory limit (512M for the Java services and Zipkin, 256M for Grafana and Prometheus).",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:8",
+            "quote": "memory: 512M"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:149",
+            "quote": "memory: 256M"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "group": "Configuration",
+    "items": [
+      {
+        "text": "Each service imports its config with spring.config.import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888/} by default and configserver:http://config-server:8888 under the docker profile.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/resources/application.yml:5",
+            "quote": "${CONFIG_SERVER_URL:http://localhost:8888/}"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/resources/application.yml:13",
+            "quote": "import: configserver:http://config-server:8888"
+          }
+        ]
+      },
+      {
+        "text": "Config server serves from the git repo spring-petclinic-microservices-config (default label main). Setting the native profile and GIT_REPO switches to a local file-system backend.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-config-server/src/main/resources/application.yml:7",
+            "quote": "spring-petclinic/spring-petclinic-microservices-config"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-config-server/src/main/resources/application.yml:9",
+            "quote": "Use the File System Backend to avoid git pulling"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-config-server/src/main/resources/application.yml:11",
+            "quote": "searchLocations: file:///${GIT_REPO}"
+          }
+        ]
+      },
+      {
+        "text": "The config repo has a shared application.yml plus one file per service name (admin-server, api-gateway, customers-service, discovery-server, genai-service, tracing-server, vets-service, visits-service).",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices-config:application.yml:1",
+            "quote": "# COMMON APPLICATION PROPERTIES"
+          },
+          {
+            "ref": "spring-petclinic-microservices-config:vets-service.yml:22",
+            "quote": "port: 8083"
+          },
+          {
+            "ref": "spring-petclinic-microservices-config:visits-service.yml:16",
+            "quote": "port: 8082"
+          }
+        ]
+      },
+      {
+        "text": "By default services start on a random port (server.port 0); under the docker profile customers, visits, vets and genai fix their ports (8081 to 8084); the gateway, discovery-server, config-server and admin-server ports are fixed in all profiles.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices-config:application.yml:4",
+            "quote": "start services on random port by default"
+          },
+          {
+            "ref": "spring-petclinic-microservices-config:genai-service.yml:16",
+            "quote": "port: 8084"
+          }
+        ]
+      },
+      {
+        "text": "Spring profiles: docker (set in the Dockerfile), mysql (switches datasource to a MySQL URL and the db/mysql scripts, in the shared config), chaos-monkey (enables Chaos Monkey; run_all.sh --chaos-monkey passes it), native (config-server file backend).",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices-config:application.yml:98",
+            "quote": "on-profile: mysql"
+          },
+          {
+            "ref": "spring-petclinic-microservices-config:application.yml:71",
+            "quote": "on-profile: chaos-monkey"
+          },
+          {
+            "ref": "spring-petclinic-microservices:scripts/run_all.sh:81",
+            "quote": "--spring.profiles.active=chaos-monkey"
+          },
+          {
+            "ref": "spring-petclinic-microservices:README.md:174",
+            "quote": "ENV SPRING_PROFILES_ACTIVE docker,mysql"
+          }
+        ]
+      },
+      {
+        "text": "Shared config exposes all actuator endpoints and enables the Prometheus metrics export; the Zipkin endpoint under the docker profile is http://tracing-server:9411/api/v2/spans.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices-config:application.yml:32",
+            "quote": "management.endpoints.web.exposure.include"
+          },
+          {
+            "ref": "spring-petclinic-microservices-config:application.yml:92",
+            "quote": "http://tracing-server:9411/api/v2/spans"
+          }
+        ]
+      },
+      {
+        "text": "Prometheus scrapes itself and four services (api-gateway, customers, visits, vets) at /actuator/prometheus; genai-service and admin-server are not listed.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:docker/prometheus/prometheus.yml:12",
+            "quote": "['localhost:9090']"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker/prometheus/prometheus.yml:32",
+            "quote": "['vets-service:8083']"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "group": "GenAI and vets details",
+    "items": [
+      {
+        "text": "genai-service answers vet questions from an in-memory vector store pre-embedded in <code>vectorstore.json</code>; the live call to vets-service happens only if that file is missing.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/VectorStoreController.java:58",
+            "quote": "load(resource)"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/AIDataProvider.java:66",
+            "quote": "this.vectorStore.similaritySearch(sr)"
+          }
+        ]
+      },
+      {
+        "text": "Chat memory keeps context across messages (a <code>MessageChatMemoryAdvisor</code> is registered on the chat client).",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:48",
+            "quote": "MessageChatMemoryAdvisor.builder(chatMemory)"
+          }
+        ]
+      },
+      {
+        "text": "vets-service marks <code>GET /vets</code> as cacheable in a cache named <code>vets</code>; <code>@EnableCaching</code> sits in a class active only under the <code>production</code> profile. The service's application.yml makes <code>production</code> the default profile, but the Docker image sets <code>SPRING_PROFILES_ACTIVE=docker</code>, so caching is not on in docker-compose. The config repo sets <code>vets.cache.ttl: 60</code> and <code>heap-size: 100</code>, bound to <code>VetsProperties</code>.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-vets-service/src/main/java/org/springframework/samples/petclinic/vets/system/CacheConfig.java:28",
+            "quote": "@Profile(\"production\")"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-vets-service/src/main/resources/application.yml:7",
+            "quote": "cache-names: vets"
+          },
+          {
+            "ref": "spring-petclinic-microservices-config:vets-service.yml:3",
+            "quote": "ttl: 60"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-vets-service/src/main/java/org/springframework/samples/petclinic/vets/system/VetsProperties.java:25",
+            "quote": "@ConfigurationProperties(prefix = \"vets\")"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker/Dockerfile:14",
+            "quote": "SPRING_PROFILES_ACTIVE=docker"
+          }
+        ]
+      },
+      {
+        "text": "Caffeine is a dependency of vets-service; no code that builds a Caffeine cache or reads the ttl and heap-size values was found.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-vets-service/pom.xml:81",
+            "quote": "<artifactId>caffeine</artifactId>"
+          }
+        ]
+      },
+      {
+        "text": "In the docker profile vets-service listens on 8083 and genai-service on 8084; otherwise the shared config gives services a random port.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices-config:vets-service.yml:22",
+            "quote": "port: 8083"
+          },
+          {
+            "ref": "spring-petclinic-microservices-config:genai-service.yml:16",
+            "quote": "port: 8084"
+          },
+          {
+            "ref": "spring-petclinic-microservices-config:application.yml:4",
+            "quote": "# start services on random port by default"
+          }
+        ]
+      },
+      {
+        "text": "The LLM key is read from the environment (<code>OPENAI_API_KEY</code>) and docker-compose forwards it to genai-service.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:85",
+            "quote": "OPENAI_API_KEY=${OPENAI_API_KEY}"
+          }
+        ]
+      },
+      {
+        "text": "genai-service also pulls in the Spring Cloud Gateway starter and JPA/HSQLDB in its pom, although no gateway routes or entities were found in its source.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/pom.xml:80",
+            "quote": "spring-cloud-starter-gateway-server-webflux"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/pom.xml:53",
+            "quote": "spring-boot-starter-data-jpa"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -51,6 +51,7 @@ m.connections.forEach(c => {
   if (seenConn.has(k + c.protocol)) errs.push(`connection ${k} (${c.protocol}) appears twice`);
   seenConn.add(k + c.protocol);
   if (!(c.evidence || []).length) errs.push(`connection ${k}: no evidence`);
+  if (c.condition !== undefined && typeof c.condition !== 'string') errs.push(`connection ${k}: "condition" must be text`);
 });
 const flowIds = new Set();
 m.flows.forEach(f => {
@@ -91,7 +92,7 @@ const used = [...new Set(evidence.map(e => (L.parseRef(e.ref) || {}).repo).filte
 if (has('--pin') && !errs.length) {
   for (const repo of used) {
     const dir = L.repoDir(m, root, repo);
-    if (!fs.existsSync(dir)) { errs.push(`--pin: ${repo} is not cloned at ${dir}`); continue; }
+    if (!fs.existsSync(dir)) { errs.push(`--pin: ${repo} is not cloned at ${dir}; set "reposDir" in map.json (relative to the map folder) or pass --repos <dir>`); continue; }
     const d = L.defaultRev(dir);
     if (!d) { errs.push(`--pin: cannot read the default branch of ${repo} at ${dir}`); continue; }
     if (d.warn) console.warn(`warning: ${repo}: ${d.warn}`);
@@ -168,7 +169,7 @@ m.layers.forEach(l => {
   const cs = m.components.filter(c => c.layer === l.id); if (!cs.length) return;
   push(`  subgraph ${mid('layer-' + l.id)}["${mlabel(l.label)}"]`, ...cs.map(c => `    ${mid(c.id)}["${mlabel(c.label)}"]`), '  end');
 });
-m.connections.forEach(c => push(`  ${mid(c.from)} -->|"${mlabel(c.protocol)}"| ${mid(c.to)}`));
+m.connections.forEach(c => push(`  ${mid(c.from)} ${c.condition ? '-.->' : '-->'}|"${mlabel(c.protocol)}"| ${mid(c.to)}`));
 push('```', '');
 push('## Components', '');
 m.layers.forEach(l => {
@@ -176,6 +177,7 @@ m.layers.forEach(l => {
   push(`### ${l.label}`, '');
   cs.forEach(c => {
     push(`#### ${c.label}`, '', md(c.purpose), '');
+    if (c.condition) push(`*Optional: ${c.condition}*`, '');
     if (c.callout) push(`> ${md(c.callout).replace(/\n/g, '\n> ')}`, '');
     if (c.repo) push(`- **Repo:** ${links[c.repo] && links[c.repo].tree ? `[${c.repo}](${links[c.repo].tree})` : c.repo}`);
     if ((c.exposes || []).length) push(`- **Exposes:** ${c.exposes.map(x => '`' + x + '`').join(', ')}`);
@@ -190,7 +192,7 @@ m.layers.forEach(l => {
   });
 });
 push('## Connections', '', '| From | To | Protocol | What | Evidence |', '|---|---|---|---|---|');
-m.connections.forEach(c => push(`| ${NODE[c.from].label} | ${NODE[c.to].label} | ${c.protocol} | ${md(c.what || '').replace(/\|/g, '\\|').replace(/\n/g, ' ')} | ${c.evidence.map(evMd).join('<br>').replace(/\|/g, '\\|')} |`));
+m.connections.forEach(c => push(`| ${NODE[c.from].label} | ${NODE[c.to].label} | ${c.protocol} | ${md(c.what || '').replace(/\|/g, '\\|').replace(/\n/g, ' ')}${c.condition ? ` (optional: ${c.condition.replace(/\|/g, '\\|')})` : ''} | ${c.evidence.map(evMd).join('<br>').replace(/\|/g, '\\|')} |`));
 push('');
 if (m.flows.length) {
   push('## Flows', '');
@@ -224,7 +226,8 @@ const mdFile = path.join(m.dir, out.markdown || 'ARCHITECTURE.md');
 fs.writeFileSync(mdFile, lines.join('\n'));
 
 const steps = m.flows.reduce((a, f) => a + f.steps.length, 0);
-console.log(`Built ${path.relative(process.cwd(), htmlFile)} and ${path.basename(mdFile)}: ${m.components.length} components, ${m.connections.length} connections, ` +
+const shown = path.relative(process.cwd(), htmlFile);
+console.log(`Built ${shown.startsWith('..') ? htmlFile : shown} and ${path.basename(mdFile)}: ${m.components.length} components, ${m.connections.length} connections, ` +
   `${m.flows.length} flows (${steps} steps), ${evidence.length} evidence references across ${used.length} repos (verified on ${m.pins.verifiedOn}).`);
 
 if (has('--verify')) {

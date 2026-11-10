@@ -15,8 +15,8 @@ every quote, so only write what you can point at.
 ## How to read code
 
 - Only from each repo's default branch, with git, never the working tree:
-  `head=$(git -C <repo> rev-parse --abbrev-ref origin/HEAD)`,
-  `git -C <repo> grep -n -E '<pattern>' "$head" -- '<glob>'`, `git -C <repo> show "$head:<path>"`.
+  `git -C <repo> grep -n -E '<pattern>' origin/HEAD -- '<glob>'`, `git -C <repo> show origin/HEAD:<path>`.
+  One simple command per call: no `cd`, no shell variables.
 - Never checkout, reset, stash, pull or edit anything.
 - Search hints by ecosystem: `<skill-dir>/references/where-to-look.md`. Evidence rules:
   `<skill-dir>/references/evidence-rules.md`. Read both first.
@@ -34,8 +34,10 @@ Write JSON fragments in the formats of `<skill-dir>/references/data-format.md`:
    10 fields, `requestSchema` / `responseSchema` pointing at the definition.
 4. **Facts** about how the slice is built, configured and shipped, if clearly shown in code.
 
-Every evidence item is `{ "ref": "repo:path:line", "quote": "<exact substring of that line, 10 to 60 chars>" }`.
-Copy the quote from the line as printed by `git show`, never from memory.
+Every evidence item is `{ "ref": "repo:path:line", "quote": "<exact substring of that line, 10 to 60 chars (the build accepts 6 to 120)>" }`.
+Copy the quote from the line as printed by `node <skill-dir>/scripts/show.js <repo-dir> <path> <from> <to>` (numbered
+lines from `origin/HEAD`), never from memory. Write your result to a fragment file (`{ "components": [...],
+"connections": [...], "flows": [...], "facts": [...] }`) so the coordinator can merge it with `merge.js`.
 
 ## Also report
 

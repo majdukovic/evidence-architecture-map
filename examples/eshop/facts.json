@@ -1,0 +1,183 @@
+[
+  {
+    "group": "How it runs",
+    "items": [
+      {
+        "text": "The whole system is started from one Aspire AppHost project that declares every service, database and the broker.",
+        "evidence": [
+          {
+            "ref": "eShop:src/eShop.AppHost/AppHost.cs:4",
+            "quote": "DistributedApplication.CreateBuilder(args)"
+          }
+        ]
+      },
+      {
+        "text": "WebApp finds Catalog by Aspire service name (<code>catalog-api</code>), resolved through service discovery that <code>AddServiceDefaults</code> turns on (Basket and Order processor use the basic variant without it).",
+        "evidence": [
+          {
+            "ref": "eShop:src/eShop.ServiceDefaults/Extensions.cs:20",
+            "quote": "builder.Services.AddServiceDiscovery();"
+          },
+          {
+            "ref": "eShop:src/WebApp/Extensions/Extensions.cs:34",
+            "quote": "new(\"https+http://catalog-api\")"
+          }
+        ]
+      },
+      {
+        "text": "Projects that call <code>AddServiceDefaults</code> get the standard resilience handler on their HTTP clients by default.",
+        "evidence": [
+          {
+            "ref": "eShop:src/eShop.ServiceDefaults/Extensions.cs:25",
+            "quote": "http.AddStandardResilienceHandler();"
+          }
+        ]
+      },
+      {
+        "text": "ServiceDefaults maps <code>/health</code> and <code>/alive</code> only when the environment is Development.",
+        "evidence": [
+          {
+            "ref": "eShop:src/eShop.ServiceDefaults/Extensions.cs:115",
+            "quote": "if (app.Environment.IsDevelopment())"
+          },
+          {
+            "ref": "eShop:src/eShop.ServiceDefaults/Extensions.cs:118",
+            "quote": "app.MapHealthChecks(\"/health\");"
+          }
+        ]
+      },
+      {
+        "text": "Catalog, Identity, Ordering and Webhooks migrate their own database at startup. A code comment in Catalog calls this a development convenience that should not be in production.",
+        "evidence": [
+          {
+            "ref": "eShop:src/Catalog.API/Extensions/Extensions.cs:23",
+            "quote": "This is done for development ease but shouldn't be here in production"
+          },
+          {
+            "ref": "eShop:src/Identity.API/Program.cs:12",
+            "quote": "builder.Services.AddMigration<ApplicationDbContext, UsersSeed>();"
+          },
+          {
+            "ref": "eShop:src/Catalog.API/Extensions/Extensions.cs:24",
+            "quote": "builder.Services.AddMigration<CatalogContext, CatalogContextSeed>();"
+          },
+          {
+            "ref": "eShop:src/Ordering.API/Extensions/Extensions.cs:21",
+            "quote": "services.AddMigration<OrderingContext, OrderingContextSeed>();"
+          },
+          {
+            "ref": "eShop:src/Webhooks.API/Extensions/Extensions.cs:12",
+            "quote": "builder.Services.AddMigration<WebhooksContext>();"
+          }
+        ]
+      },
+      {
+        "text": "Order processor waits for Ordering API to be ready because Ordering holds the EF migrations.",
+        "evidence": [
+          {
+            "ref": "eShop:src/eShop.AppHost/AppHost.cs:51",
+            "quote": ".WaitFor(orderingApi); // wait for the orderingApi to be ready because that contains the EF migrations"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "group": "How events work",
+    "items": [
+      {
+        "text": "Every event is published to one direct exchange and the routing key is the event class name, so a consumer subscribes by the class name of the event.",
+        "evidence": [
+          {
+            "ref": "eShop:src/EventBusRabbitMQ/RabbitMQEventBus.cs:33",
+            "quote": "var routingKey = @event.GetType().Name;"
+          },
+          {
+            "ref": "eShop:src/EventBusRabbitMQ/RabbitMQEventBus.cs:47",
+            "quote": "await channel.ExchangeDeclareAsync("
+          }
+        ]
+      },
+      {
+        "text": "Ordering and Catalog save the event to an integration-event log in the same database transaction as the data change, then publish it (a transactional outbox).",
+        "evidence": [
+          {
+            "ref": "eShop:src/Ordering.API/Application/IntegrationEvents/OrderingIntegrationEventService.cs:40",
+            "quote": "await _eventLogService.SaveEventAsync(evt, _orderingContext.GetCurrentTransaction());"
+          },
+          {
+            "ref": "eShop:src/Catalog.API/IntegrationEvents/CatalogIntegrationEventService.cs:38",
+            "quote": "await integrationEventLogService.SaveEventAsync(evt, catalogContext.Database.CurrentTransaction);"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "group": "Conventions inside Ordering API",
+    "items": [
+      {
+        "text": "Ordering API uses MediatR for commands, with logging, validation and transaction behaviours wrapped around every command.",
+        "evidence": [
+          {
+            "ref": "eShop:src/Ordering.API/Extensions/Extensions.cs:35",
+            "quote": "services.AddMediatR(cfg =>"
+          },
+          {
+            "ref": "eShop:src/Ordering.API/Extensions/Extensions.cs:41",
+            "quote": "cfg.AddOpenBehavior(typeof(TransactionBehavior<,>));"
+          }
+        ]
+      },
+      {
+        "text": "Creating an order is idempotent on the <code>x-requestid</code> header: a duplicate request is ignored and reported as success.",
+        "evidence": [
+          {
+            "ref": "eShop:src/Ordering.API/Application/Commands/CreateOrderCommandHandler.cs:67",
+            "quote": "protected override bool CreateResultForDuplicateRequest()"
+          },
+          {
+            "ref": "eShop:src/Ordering.API/Application/Commands/CreateOrderCommandHandler.cs:69",
+            "quote": "return true; // Ignore duplicate requests for creating order."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "group": "Build and CI",
+    "items": [
+      {
+        "text": "Pull requests build and test the server solution filter <code>eShop.Web.slnf</code> on Ubuntu.",
+        "evidence": [
+          {
+            "ref": "eShop:.github/workflows/pr-validation.yml:27",
+            "quote": "run: dotnet build eShop.Web.slnf"
+          },
+          {
+            "ref": "eShop:.github/workflows/pr-validation.yml:29",
+            "quote": "run: dotnet test --solution eShop.Web.slnf"
+          }
+        ]
+      },
+      {
+        "text": "The MAUI client app is built and tested in a separate Windows workflow.",
+        "evidence": [
+          {
+            "ref": "eShop:.github/workflows/pr-validation-maui.yml:39",
+            "quote": "run: dotnet build src/ClientApp/ClientApp.csproj"
+          }
+        ]
+      },
+      {
+        "text": "Browser end-to-end tests run with Playwright in CI.",
+        "evidence": [
+          {
+            "ref": "eShop:.github/workflows/playwright.yml:34",
+            "quote": "run: npm run test:e2e"
+          }
+        ]
+      }
+    ]
+  }
+]

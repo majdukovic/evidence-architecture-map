@@ -1,0 +1,174 @@
+[
+  { "from": "webapp", "to": "catalog-api", "protocol": "HTTP", "what": "Lists, filters and fetches products (api/catalog/items, items/by, facets)",
+    "evidence": [
+      { "ref": "eShop:src/WebApp/Extensions/Extensions.cs:34", "quote": "new(\"https+http://catalog-api\")" },
+      { "ref": "eShop:src/WebAppComponents/Services/CatalogService.cs:82", "quote": "items?{filterQs}pageIndex={pageIndex}" },
+      { "ref": "eShop:src/Catalog.API/Apis/CatalogApi.cs:27", "quote": "v2.MapGet(\"/items\", GetAllItems)" }
+    ] },
+  { "from": "webapp", "to": "basket-api", "protocol": "gRPC", "what": "Reads, updates and deletes the signed-in user's basket",
+    "evidence": [
+      { "ref": "eShop:src/WebApp/Extensions/Extensions.cs:31", "quote": "AddGrpcClient<Basket.BasketClient>" },
+      { "ref": "eShop:src/WebApp/Services/BasketService.cs:34", "quote": "await basketClient.UpdateBasketAsync(updatePayload);" },
+      { "ref": "eShop:src/Basket.API/Program.cs:12", "quote": "app.MapGrpcService<BasketService>();" }
+    ] },
+  { "from": "webapp", "to": "ordering-api", "protocol": "HTTP", "what": "Creates an order at checkout and lists the user's orders",
+    "evidence": [
+      { "ref": "eShop:src/WebApp/Extensions/Extensions.cs:38", "quote": "new(\"https+http://ordering-api\")" },
+      { "ref": "eShop:src/WebApp/Services/OrderingService.cs:14", "quote": "new HttpRequestMessage(HttpMethod.Post, remoteServiceBaseUrl)" },
+      { "ref": "eShop:src/Ordering.API/Apis/OrdersApi.cs:17", "quote": "api.MapPost(\"/\", CreateOrderAsync);" },
+      { "ref": "eShop:src/WebApp/Services/OrderingService.cs:7", "quote": "public Task<OrderRecord[]> GetOrders()" },
+      { "ref": "eShop:src/Ordering.API/Apis/OrdersApi.cs:14", "quote": "api.MapGet(\"/\", GetOrdersByUserAsync);" }
+    ] },
+  { "from": "webapp", "to": "identity-api", "protocol": "HTTP", "what": "Signs users in with OpenID Connect",
+    "evidence": [
+      { "ref": "eShop:src/WebApp/Extensions/Extensions.cs:75", "quote": "options.Authority = identityUrl;" },
+      { "ref": "eShop:src/eShop.AppHost/AppHost.cs:79", "quote": ".WithEnvironment(\"IdentityUrl\", identityEndpoint);" },
+      { "ref": "eShop:src/Identity.API/Program.cs:18", "quote": "builder.Services.AddIdentityServer(options" }
+    ] },
+  { "from": "mobile-bff", "to": "catalog-api", "protocol": "HTTP", "what": "Proxies catalog routes",
+    "evidence": [
+      { "ref": "eShop:src/eShop.AppHost/AppHost.cs:64", "quote": ".ConfigureMobileBffRoutes(catalogApi, orderingApi, identityApi);" },
+      { "ref": "eShop:src/eShop.AppHost/Extensions.cs:142", "quote": "yarp.AddRoute(\"/api/catalog/{*any}\", catalogCluster)" }
+    ] },
+  { "from": "mobile-bff", "to": "ordering-api", "protocol": "HTTP", "what": "Proxies order routes",
+    "evidence": [
+      { "ref": "eShop:src/eShop.AppHost/Extensions.cs:146", "quote": "yarp.AddRoute(\"/api/orders/{*any}\", orderingApi.GetEndpoint(\"http\"))" }
+    ] },
+  { "from": "mobile-bff", "to": "identity-api", "protocol": "HTTP", "what": "Proxies identity routes under /identity",
+    "evidence": [
+      { "ref": "eShop:src/eShop.AppHost/Extensions.cs:150", "quote": "yarp.AddRoute(\"/identity/{*any}\", identityApi.GetEndpoint(\"http\"))" }
+    ] },
+  { "from": "basket-api", "to": "identity-api", "protocol": "HTTP", "what": "Uses Identity as the authority for validating bearer tokens",
+    "evidence": [
+      { "ref": "eShop:src/Basket.API/Extensions/Extensions.cs:12", "quote": "builder.AddDefaultAuthentication();" },
+      { "ref": "eShop:src/eShop.AppHost/AppHost.cs:35", "quote": ".WithEnvironment(\"Identity__Url\", identityEndpoint);" },
+      { "ref": "eShop:src/eShop.ServiceDefaults/AuthenticationExtensions.cs:38", "quote": "options.Authority = identityUrl;" }
+    ] },
+  { "from": "ordering-api", "to": "identity-api", "protocol": "HTTP", "what": "Uses Identity as the authority for validating bearer tokens",
+    "evidence": [
+      { "ref": "eShop:src/Ordering.API/Extensions/Extensions.cs:10", "quote": "builder.AddDefaultAuthentication();" },
+      { "ref": "eShop:src/eShop.AppHost/AppHost.cs:46", "quote": ".WithEnvironment(\"Identity__Url\", identityEndpoint);" },
+      { "ref": "eShop:src/eShop.ServiceDefaults/AuthenticationExtensions.cs:38", "quote": "options.Authority = identityUrl;" }
+    ] },
+  { "from": "webhooks-api", "to": "identity-api", "protocol": "HTTP", "what": "Uses Identity as the authority for validating bearer tokens",
+    "evidence": [
+      { "ref": "eShop:src/Webhooks.API/Extensions/Extensions.cs:5", "quote": "builder.AddDefaultAuthentication();" },
+      { "ref": "eShop:src/eShop.AppHost/AppHost.cs:59", "quote": ".WithEnvironment(\"Identity__Url\", identityEndpoint);" },
+      { "ref": "eShop:src/eShop.ServiceDefaults/AuthenticationExtensions.cs:38", "quote": "options.Authority = identityUrl;" }
+    ] },
+  { "from": "webhooks-client", "to": "webhooks-api", "protocol": "HTTP", "what": "Registers and lists webhook subscriptions",
+    "evidence": [
+      { "ref": "eShop:src/WebhookClient/Extensions/Extensions.cs:19", "quote": "new(\"http://webhooks-api\")" },
+      { "ref": "eShop:src/WebhookClient/Services/WebHooksClient.cs:7", "quote": "client.PostAsJsonAsync(\"/api/webhooks\", payload)" },
+      { "ref": "eShop:src/Webhooks.API/Apis/WebHooksApi.cs:35", "quote": "api.MapPost(\"/\"" }
+    ] },
+  { "from": "webhooks-api", "to": "webhooks-client", "protocol": "HTTP", "what": "POSTs the event to the destination URL a subscriber registered; the sample client receives it on /webhook-received",
+    "evidence": [
+      { "ref": "eShop:src/Webhooks.API/Services/WebhooksSender.cs:17", "quote": "RequestUri = new Uri(subs.DestUrl, UriKind.Absolute)" },
+      { "ref": "eShop:src/Webhooks.API/Services/WebhooksSender.cs:18", "quote": "Method = HttpMethod.Post" },
+      { "ref": "eShop:src/WebhookClient/Endpoints/WebhookEndpoints.cs:31", "quote": "app.MapPost(\"/webhook-received\"" }
+    ] },
+
+  { "from": "basket-api", "to": "redis", "protocol": "Redis", "what": "Stores each basket as a JSON string under /basket/{userId}",
+    "evidence": [
+      { "ref": "eShop:src/Basket.API/Extensions/Extensions.cs:14", "quote": "builder.AddRedisClient(\"redis\");" },
+      { "ref": "eShop:src/eShop.AppHost/AppHost.cs:33", "quote": ".WithReference(redis)" },
+      { "ref": "eShop:src/Basket.API/Repositories/RedisBasketRepository.cs:37", "quote": "_database.StringSetAsync(GetBasketKey(basket.BuyerId), json)" }
+    ] },
+  { "from": "catalog-api", "to": "postgres", "protocol": "PostgreSQL", "what": "Reads and writes catalog data in catalogdb",
+    "evidence": [
+      { "ref": "eShop:src/Catalog.API/Extensions/Extensions.cs:15", "quote": "AddNpgsqlDbContext<CatalogContext>(\"catalogdb\"" },
+      { "ref": "eShop:src/eShop.AppHost/AppHost.cs:40", "quote": ".WithReference(catalogDb);" }
+    ] },
+  { "from": "ordering-api", "to": "postgres", "protocol": "PostgreSQL", "what": "Reads and writes orders in orderingdb",
+    "evidence": [
+      { "ref": "eShop:src/Ordering.API/Extensions/Extensions.cs:17", "quote": "GetConnectionString(\"orderingdb\")" },
+      { "ref": "eShop:src/eShop.AppHost/AppHost.cs:44", "quote": ".WithReference(orderDb).WaitFor(orderDb)" }
+    ] },
+  { "from": "order-processor", "to": "postgres", "protocol": "PostgreSQL", "what": "Queries orderingdb for orders past the grace period",
+    "evidence": [
+      { "ref": "eShop:src/OrderProcessor/Extensions/Extensions.cs:13", "quote": "builder.AddNpgsqlDataSource(\"orderingdb\");" },
+      { "ref": "eShop:src/OrderProcessor/Services/GracePeriodOrdersRepository.cs:27", "quote": "\"OrderStatus\" = 'Submitted'" },
+      { "ref": "eShop:src/eShop.AppHost/AppHost.cs:50", "quote": ".WithReference(orderDb)" }
+    ] },
+  { "from": "identity-api", "to": "postgres", "protocol": "PostgreSQL", "what": "Stores users in identitydb",
+    "evidence": [
+      { "ref": "eShop:src/Identity.API/Program.cs:7", "quote": "AddNpgsqlDbContext<ApplicationDbContext>(\"identitydb\")" },
+      { "ref": "eShop:src/eShop.AppHost/AppHost.cs:27", "quote": ".WithReference(identityDb)" }
+    ] },
+  { "from": "webhooks-api", "to": "postgres", "protocol": "PostgreSQL", "what": "Stores webhook subscriptions in webhooksdb",
+    "evidence": [
+      { "ref": "eShop:src/Webhooks.API/Extensions/Extensions.cs:10", "quote": "AddNpgsqlDbContext<WebhooksContext>(\"webhooksdb\")" },
+      { "ref": "eShop:src/eShop.AppHost/AppHost.cs:58", "quote": ".WithReference(webhooksDb)" }
+    ] },
+
+  { "from": "ordering-api", "to": "rabbitmq", "protocol": "RabbitMQ", "what": "Publishes order-status events (Submitted, AwaitingValidation, StockConfirmed, Paid, Shipped, Cancelled) and OrderStarted",
+    "evidence": [
+      { "ref": "eShop:src/Ordering.API/Application/IntegrationEvents/OrderingIntegrationEventService.cs:24", "quote": "await _eventBus.PublishAsync(logEvt.IntegrationEvent);" },
+      { "ref": "eShop:src/Ordering.API/Extensions/Extensions.cs:28", "quote": "builder.AddRabbitMqEventBus(\"eventbus\")" },
+      { "ref": "eShop:src/Ordering.API/Application/Commands/CreateOrderCommandHandler.cs:32", "quote": "new OrderStartedIntegrationEvent(message.UserId)" },
+      { "ref": "eShop:src/Ordering.API/Application/DomainEventHandlers/ValidateOrAddBuyerAggregateWhenOrderStartedDomainEventHandler.cs:50", "quote": "new OrderStatusChangedToSubmittedIntegrationEvent(" },
+      { "ref": "eShop:src/Ordering.API/Application/DomainEventHandlers/OrderStatusChangedToAwaitingValidationDomainEventHandler.cs:33", "quote": "new OrderStatusChangedToAwaitingValidationIntegrationEvent(" },
+      { "ref": "eShop:src/Ordering.API/Application/DomainEventHandlers/OrderStatusChangedToStockConfirmedDomainEventHandler.cs:30", "quote": "new OrderStatusChangedToStockConfirmedIntegrationEvent(" },
+      { "ref": "eShop:src/Ordering.API/Application/DomainEventHandlers/OrderStatusChangedToPaidDomainEventHandler.cs:32", "quote": "new OrderStatusChangedToPaidIntegrationEvent(" },
+      { "ref": "eShop:src/Ordering.API/Application/DomainEventHandlers/OrderShippedDomainEventHandler.cs:30", "quote": "new OrderStatusChangedToShippedIntegrationEvent(" },
+      { "ref": "eShop:src/Ordering.API/Application/DomainEventHandlers/OrderCancelledDomainEventHandler.cs:30", "quote": "new OrderStatusChangedToCancelledIntegrationEvent(" },
+      { "ref": "eShop:src/EventBusRabbitMQ/RabbitMQEventBus.cs:97", "quote": "await channel.BasicPublishAsync(" }
+    ] },
+  { "from": "catalog-api", "to": "rabbitmq", "protocol": "RabbitMQ", "what": "Publishes OrderStockConfirmed / OrderStockRejected and ProductPriceChanged",
+    "evidence": [
+      { "ref": "eShop:src/Catalog.API/IntegrationEvents/CatalogIntegrationEventService.cs:18", "quote": "await eventBus.PublishAsync(evt);" },
+      { "ref": "eShop:src/Catalog.API/Extensions/Extensions.cs:31", "quote": "builder.AddRabbitMqEventBus(\"eventbus\")" },
+      { "ref": "eShop:src/Catalog.API/IntegrationEvents/EventHandling/OrderStatusChangedToAwaitingValidationIntegrationEventHandler.cs:28", "quote": "new OrderStockRejectedIntegrationEvent(@event.OrderId, confirmedOrderStockItems)" },
+      { "ref": "eShop:src/Catalog.API/IntegrationEvents/EventHandling/OrderStatusChangedToAwaitingValidationIntegrationEventHandler.cs:29", "quote": "new OrderStockConfirmedIntegrationEvent(@event.OrderId)" },
+      { "ref": "eShop:src/Catalog.API/Apis/CatalogApi.cs:405", "quote": "PublishThroughEventBusAsync(priceChangedEvent)" },
+      { "ref": "eShop:src/eShop.AppHost/AppHost.cs:39", "quote": ".WithReference(rabbitMq)" }
+    ] },
+  { "from": "order-processor", "to": "rabbitmq", "protocol": "RabbitMQ", "what": "Publishes GracePeriodConfirmed for each order past the grace period",
+    "evidence": [
+      { "ref": "eShop:src/OrderProcessor/Services/GracePeriodManagerService.cs:60", "quote": "await eventBus.PublishAsync(confirmGracePeriodEvent);" },
+      { "ref": "eShop:src/OrderProcessor/Extensions/Extensions.cs:10", "quote": "builder.AddRabbitMqEventBus(\"eventbus\")" },
+      { "ref": "eShop:src/eShop.AppHost/AppHost.cs:49", "quote": ".WithReference(rabbitMq)" }
+    ] },
+  { "from": "payment-processor", "to": "rabbitmq", "protocol": "RabbitMQ", "what": "Publishes OrderPaymentSucceeded or OrderPaymentFailed",
+    "evidence": [
+      { "ref": "eShop:src/PaymentProcessor/IntegrationEvents/EventHandling/OrderStatusChangedToStockConfirmedIntegrationEventHandler.cs:32", "quote": "await eventBus.PublishAsync(orderPaymentIntegrationEvent);" },
+      { "ref": "eShop:src/PaymentProcessor/Program.cs:5", "quote": "builder.AddRabbitMqEventBus(\"EventBus\")" },
+      { "ref": "eShop:src/eShop.AppHost/AppHost.cs:54", "quote": ".WithReference(rabbitMq)" }
+    ] },
+
+  { "from": "rabbitmq", "to": "basket-api", "protocol": "RabbitMQ", "what": "Delivers OrderStarted so the basket is deleted",
+    "evidence": [
+      { "ref": "eShop:src/Basket.API/Extensions/Extensions.cs:19", "quote": ".AddSubscription<OrderStartedIntegrationEvent, OrderStartedIntegrationEventHandler>()" },
+      { "ref": "eShop:src/Basket.API/IntegrationEvents/EventHandling/OrderStartedIntegrationEventHandler.cs:14", "quote": "await repository.DeleteBasketAsync(@event.UserId);" },
+      { "ref": "eShop:src/eShop.AppHost/AppHost.cs:34", "quote": ".WithReference(rabbitMq)" }
+    ] },
+  { "from": "rabbitmq", "to": "catalog-api", "protocol": "RabbitMQ", "what": "Delivers OrderStatusChangedToAwaitingValidation (stock check) and OrderStatusChangedToPaid (stock removal)",
+    "evidence": [
+      { "ref": "eShop:src/Catalog.API/Extensions/Extensions.cs:32", "quote": ".AddSubscription<OrderStatusChangedToAwaitingValidationIntegrationEvent" },
+      { "ref": "eShop:src/Catalog.API/Extensions/Extensions.cs:33", "quote": ".AddSubscription<OrderStatusChangedToPaidIntegrationEvent" }
+    ] },
+  { "from": "rabbitmq", "to": "ordering-api", "protocol": "RabbitMQ", "what": "Delivers GracePeriodConfirmed, OrderStockConfirmed, OrderStockRejected, OrderPaymentFailed and OrderPaymentSucceeded",
+    "evidence": [
+      { "ref": "eShop:src/Ordering.API/Extensions/Extensions.cs:55", "quote": "AddSubscription<GracePeriodConfirmedIntegrationEvent" },
+      { "ref": "eShop:src/Ordering.API/Extensions/Extensions.cs:56", "quote": "AddSubscription<OrderStockConfirmedIntegrationEvent" },
+      { "ref": "eShop:src/Ordering.API/Extensions/Extensions.cs:58", "quote": "AddSubscription<OrderPaymentFailedIntegrationEvent" },
+      { "ref": "eShop:src/Ordering.API/Extensions/Extensions.cs:59", "quote": "AddSubscription<OrderPaymentSucceededIntegrationEvent" }
+    ] },
+  { "from": "rabbitmq", "to": "payment-processor", "protocol": "RabbitMQ", "what": "Delivers OrderStatusChangedToStockConfirmed",
+    "evidence": [
+      { "ref": "eShop:src/PaymentProcessor/Program.cs:6", "quote": ".AddSubscription<OrderStatusChangedToStockConfirmedIntegrationEvent" }
+    ] },
+  { "from": "rabbitmq", "to": "webapp", "protocol": "RabbitMQ", "what": "Delivers every order-status event so the open order page can refresh",
+    "evidence": [
+      { "ref": "eShop:src/WebApp/Extensions/Extensions.cs:45", "quote": "eventBus.AddSubscription<OrderStatusChangedToAwaitingValidationIntegrationEvent" },
+      { "ref": "eShop:src/WebApp/Extensions/Extensions.cs:50", "quote": "eventBus.AddSubscription<OrderStatusChangedToSubmittedIntegrationEvent" },
+      { "ref": "eShop:src/WebApp/Services/OrderStatus/IntegrationEvents/EventHandling/OrderStatusChangedToPaidIntegrationEventHandler.cs:13", "quote": "NotifyOrderStatusChangedAsync(@event.BuyerIdentityGuid)" }
+    ] },
+  { "from": "rabbitmq", "to": "webhooks-api", "protocol": "RabbitMQ", "what": "Delivers OrderStatusChangedToShipped and OrderStatusChangedToPaid (also subscribed to ProductPriceChanged, whose handler does nothing)",
+    "evidence": [
+      { "ref": "eShop:src/Webhooks.API/Extensions/Extensions.cs:21", "quote": "AddSubscription<ProductPriceChangedIntegrationEvent" },
+      { "ref": "eShop:src/Webhooks.API/Extensions/Extensions.cs:22", "quote": "AddSubscription<OrderStatusChangedToShippedIntegrationEvent" },
+      { "ref": "eShop:src/Webhooks.API/Extensions/Extensions.cs:23", "quote": "AddSubscription<OrderStatusChangedToPaidIntegrationEvent" }
+    ] }
+]

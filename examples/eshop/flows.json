@@ -1,0 +1,864 @@
+[
+  {
+    "id": "browse-catalogue",
+    "title": "Browse the catalogue",
+    "tagline": "Storefront to Catalog API and its database",
+    "featured": true,
+    "summary": "A shopper opens the shop. <b>WebApp</b> asks <b>Catalog API</b> for one page of products (optionally filtered by type and brand), plus the facet counts and the pictures. No events are involved.",
+    "actors": [
+      "webapp",
+      "catalog-api",
+      "postgres"
+    ],
+    "steps": [
+      {
+        "from": "webapp",
+        "to": "catalog-api",
+        "kind": "req",
+        "label": "Ask for one page of products",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "GET",
+          "target": "/api/catalog/items"
+        },
+        "request": {
+          "type": 1,
+          "brand": 2,
+          "pageIndex": 0,
+          "pageSize": 9
+        },
+        "description": "Query parameters are <code>type</code>, <code>brand</code> (repeatable), <code>pageIndex</code> and <code>pageSize</code>. WebApp asks for API version 2.0.",
+        "evidence": [
+          {
+            "ref": "eShop:src/WebAppComponents/Services/CatalogService.cs:82",
+            "quote": "items?{filterQs}pageIndex={pageIndex}&pageSize={pageSize}"
+          },
+          {
+            "ref": "eShop:src/WebApp/Extensions/Extensions.cs:35",
+            "quote": ".AddApiVersion(2.0)"
+          },
+          {
+            "ref": "eShop:src/Catalog.API/Apis/CatalogApi.cs:27",
+            "quote": "v2.MapGet(\"/items\", GetAllItems)"
+          }
+        ]
+      },
+      {
+        "from": "catalog-api",
+        "to": "postgres",
+        "kind": "req",
+        "label": "Count and read the page, ordered by name",
+        "protocol": "PostgreSQL",
+        "payloadNote": "sql",
+        "description": "Filters by name, type and brand when given, counts the matches, then reads the requested page ordered by <code>Name</code>.",
+        "evidence": [
+          {
+            "ref": "eShop:src/Catalog.API/Apis/CatalogApi.cs:156",
+            "quote": "var totalItems = await root"
+          },
+          {
+            "ref": "eShop:src/Catalog.API/Apis/CatalogApi.cs:161",
+            "quote": ".OrderBy(c => c.Name)"
+          },
+          {
+            "ref": "eShop:src/Catalog.API/Apis/CatalogApi.cs:162",
+            "quote": ".Skip(pageSize * pageIndex)"
+          }
+        ]
+      },
+      {
+        "from": "catalog-api",
+        "to": "webapp",
+        "kind": "res",
+        "label": "Return the page",
+        "protocol": "HTTP",
+        "response": {
+          "PageIndex": 0,
+          "PageSize": 9,
+          "Count": 120,
+          "Data": [
+            {
+              "Id": 1,
+              "Name": "<name>",
+              "Description": "<text>",
+              "Price": 19.5,
+              "PictureFileName": "<file>",
+              "CatalogTypeId": 1,
+              "CatalogBrandId": 2,
+              "AvailableStock": 100,
+              "...": "..."
+            }
+          ]
+        },
+        "responseSchema": {
+          "ref": "eShop:src/Catalog.API/Model/PaginatedItems.cs:5",
+          "quote": "public class PaginatedItems<TEntity>"
+        },
+        "description": "Property names are shown as declared in the C# classes. Each item has the fields of <code>CatalogItem</code>; the embedding vector is excluded from JSON.",
+        "evidence": [
+          {
+            "ref": "eShop:src/Catalog.API/Apis/CatalogApi.cs:166",
+            "quote": "TypedResults.Ok(new PaginatedItems<CatalogItem>(pageIndex, pageSize, totalItems, itemsOnPage))"
+          },
+          {
+            "ref": "eShop:src/Catalog.API/Model/CatalogItem.cs:39",
+            "quote": "[JsonIgnore]"
+          }
+        ]
+      },
+      {
+        "from": "webapp",
+        "to": "catalog-api",
+        "kind": "req",
+        "label": "Ask for brand and type filter counts",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "GET",
+          "target": "/api/catalog/items/facets"
+        },
+        "payloadNote": "no-body",
+        "description": "Returns per-brand and per-type item counts for the current filter selection.",
+        "evidence": [
+          {
+            "ref": "eShop:src/WebAppComponents/Services/CatalogService.cs:64",
+            "quote": "items/facets?{filterQs}"
+          },
+          {
+            "ref": "eShop:src/Catalog.API/Apis/CatalogApi.cs:53",
+            "quote": "api.MapGet(\"/items/facets\", GetCatalogFacets)"
+          }
+        ]
+      },
+      {
+        "from": "webapp",
+        "to": "catalog-api",
+        "kind": "req",
+        "label": "Fetch a product picture",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "GET",
+          "target": "/api/catalog/items/{id}/pic"
+        },
+        "payloadNote": "no-body",
+        "description": "WebApp forwards <code>/product-images/{id}</code> to Catalog's picture route.",
+        "evidence": [
+          {
+            "ref": "eShop:src/WebApp/Program.cs:32",
+            "quote": "app.MapForwarder(\"/product-images/{id}\", \"https+http://catalog-api\""
+          },
+          {
+            "ref": "eShop:src/Catalog.API/Apis/CatalogApi.cs:47",
+            "quote": "api.MapGet(\"/items/{id:int}/pic\", GetItemPictureById)"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "add-to-basket",
+    "title": "Add an item to the basket",
+    "tagline": "Storefront, Basket gRPC service and Redis",
+    "featured": true,
+    "summary": "The basket lives in <b>Basket API</b> and fills in only product ids and quantities. <b>WebApp</b> reads the basket, bumps the quantity (or adds a line) and writes the whole list back. Names and prices are re-fetched from <b>Catalog API</b> whenever the basket is displayed.",
+    "actors": [
+      "webapp",
+      "basket-api",
+      "redis",
+      "catalog-api"
+    ],
+    "steps": [
+      {
+        "from": "webapp",
+        "to": "basket-api",
+        "kind": "req",
+        "label": "Read the current basket",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "Basket/GetBasket"
+        },
+        "request": {},
+        "description": "The request is empty; the user is taken from the call's identity.",
+        "requestSchema": {
+          "ref": "eShop:src/Basket.API/Proto/basket.proto:13",
+          "quote": "message GetBasketRequest {"
+        },
+        "evidence": [
+          {
+            "ref": "eShop:src/WebApp/Services/BasketService.cs:11",
+            "quote": "await basketClient.GetBasketAsync(new ())"
+          },
+          {
+            "ref": "eShop:src/Basket.API/Grpc/BasketService.cs:15",
+            "quote": "var userId = context.GetUserIdentity();"
+          }
+        ]
+      },
+      {
+        "from": "basket-api",
+        "to": "webapp",
+        "kind": "res",
+        "label": "Return the lines",
+        "protocol": "gRPC",
+        "response": {
+          "items": [
+            {
+              "product_id": 1,
+              "quantity": 2
+            }
+          ]
+        },
+        "responseSchema": {
+          "ref": "eShop:src/Basket.API/Proto/basket.proto:16",
+          "quote": "message CustomerBasketResponse {"
+        },
+        "description": "Proto field names are snake_case.",
+        "evidence": [
+          {
+            "ref": "eShop:src/Basket.API/Grpc/BasketService.cs:85",
+            "quote": "ProductId = item.ProductId,"
+          }
+        ]
+      },
+      {
+        "from": "webapp",
+        "to": "catalog-api",
+        "kind": "req",
+        "label": "Look up names and prices of the lines (only if the basket is not empty)",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "GET",
+          "target": "/api/catalog/items/by?ids=1&ids=2"
+        },
+        "payloadNote": "no-body",
+        "evidence": [
+          {
+            "ref": "eShop:src/WebApp/Services/BasketState.cs:132",
+            "quote": "await catalogService.GetCatalogItems(productIds)"
+          },
+          {
+            "ref": "eShop:src/WebAppComponents/Services/CatalogService.cs:26",
+            "quote": "items/by?ids={string.Join(\"&ids=\", ids)}"
+          },
+          {
+            "ref": "eShop:src/Catalog.API/Apis/CatalogApi.cs:32",
+            "quote": "api.MapGet(\"/items/by\", GetItemsByIds)"
+          }
+        ]
+      },
+      {
+        "from": "webapp",
+        "to": "webapp",
+        "kind": "self",
+        "label": "Add one, or increase the quantity by one",
+        "noPayload": true,
+        "evidence": [
+          {
+            "ref": "eShop:src/WebApp/Services/BasketState.cs:42",
+            "quote": "existing with { Quantity = existing.Quantity + 1 }"
+          },
+          {
+            "ref": "eShop:src/WebApp/Services/BasketState.cs:50",
+            "quote": "items.Add(new BasketQuantity(item.Id, 1));"
+          }
+        ]
+      },
+      {
+        "from": "webapp",
+        "to": "basket-api",
+        "kind": "req",
+        "label": "Write the full list back",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "Basket/UpdateBasket"
+        },
+        "request": {
+          "items": [
+            {
+              "product_id": 1,
+              "quantity": 3
+            }
+          ]
+        },
+        "requestSchema": {
+          "ref": "eShop:src/Basket.API/Proto/basket.proto:25",
+          "quote": "message UpdateBasketRequest {"
+        },
+        "description": "The call is rejected as unauthenticated when there is no user identity.",
+        "evidence": [
+          {
+            "ref": "eShop:src/WebApp/Services/BasketService.cs:34",
+            "quote": "await basketClient.UpdateBasketAsync(updatePayload);"
+          },
+          {
+            "ref": "eShop:src/Basket.API/Grpc/BasketService.cs:41",
+            "quote": "ThrowNotAuthenticated();"
+          }
+        ]
+      },
+      {
+        "from": "basket-api",
+        "to": "redis",
+        "kind": "req",
+        "label": "Store the basket as one JSON string",
+        "protocol": "Redis",
+        "call": {
+          "verb": "SET",
+          "target": "/basket/{userId}"
+        },
+        "payloadNote": "internal",
+        "evidence": [
+          {
+            "ref": "eShop:src/Basket.API/Repositories/RedisBasketRepository.cs:13",
+            "quote": "RedisKey BasketKeyPrefix = \"/basket/\"u8.ToArray();"
+          },
+          {
+            "ref": "eShop:src/Basket.API/Repositories/RedisBasketRepository.cs:37",
+            "quote": "_database.StringSetAsync(GetBasketKey(basket.BuyerId), json)"
+          }
+        ]
+      },
+      {
+        "from": "basket-api",
+        "to": "webapp",
+        "kind": "res",
+        "label": "Return the saved basket",
+        "protocol": "gRPC",
+        "response": {
+          "items": [
+            {
+              "product_id": 1,
+              "quantity": 3
+            }
+          ]
+        },
+        "evidence": [
+          {
+            "ref": "eShop:src/Basket.API/Grpc/BasketService.cs:56",
+            "quote": "return MapToCustomerBasketResponse(response);"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "checkout-and-order-status",
+    "title": "Check out and follow the order",
+    "tagline": "Order creation, stock check, payment, and the events in between",
+    "featured": true,
+    "summary": "Checkout is one synchronous call to <b>Ordering API</b>. Everything after that is asynchronous: each status change is an event on <b>RabbitMQ</b> that another component reacts to, and Ordering publishes the new status back. Status path: <code>Submitted</code> (after the grace period) <code>AwaitingValidation</code>, <code>StockConfirmed</code>, <code>Paid</code>. Stock rejection and payment failure lead to <code>Cancelled</code>. WebApp itself only creates and lists orders; shipping and cancelling are the Ordering endpoints <code>PUT /api/orders/ship</code> and <code>/cancel</code>.",
+    "actors": [
+      "webapp",
+      "ordering-api",
+      "rabbitmq",
+      "basket-api",
+      "order-processor",
+      "postgres",
+      "catalog-api",
+      "payment-processor",
+      "webhooks-api"
+    ],
+    "steps": [
+      {
+        "from": "webapp",
+        "to": "ordering-api",
+        "kind": "req",
+        "label": "Place the order",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "POST",
+          "target": "/api/orders"
+        },
+        "request": {
+          "userId": "<buyer id>",
+          "userName": "<name>",
+          "city": "<city>",
+          "street": "<street>",
+          "state": "<state>",
+          "country": "<country>",
+          "zipCode": "<zip>",
+          "cardNumber": "<card>",
+          "cardTypeId": 1,
+          "buyer": "<buyer id>",
+          "items": [
+            {
+              "productId": 1,
+              "productName": "<name>",
+              "unitPrice": 19.5,
+              "quantity": 2
+            }
+          ],
+          "...": "..."
+        },
+        "requestSchema": {
+          "ref": "eShop:src/Ordering.API/Apis/OrdersApi.cs:171",
+          "quote": "public record CreateOrderRequest("
+        },
+        "description": "The <code>x-requestid</code> header carries a GUID that makes the command idempotent. Items are the basket lines enriched with catalog name and price. Field names are shown as sent: ASP.NET Core writes and reads JSON in camelCase, while the record declares them in PascalCase.",
+        "evidence": [
+          {
+            "ref": "eShop:src/WebApp/Services/BasketState.cs:107",
+            "quote": "await orderingService.CreateOrder(request, checkoutInfo.RequestId);"
+          },
+          {
+            "ref": "eShop:src/WebApp/Services/OrderingService.cs:15",
+            "quote": "requestMessage.Headers.Add(\"x-requestid\""
+          },
+          {
+            "ref": "eShop:src/Ordering.API/Apis/OrdersApi.cs:17",
+            "quote": "api.MapPost(\"/\", CreateOrderAsync);"
+          }
+        ]
+      },
+      {
+        "from": "ordering-api",
+        "to": "ordering-api",
+        "kind": "self",
+        "label": "Create the order as Submitted and queue OrderStarted and Submitted events",
+        "noPayload": true,
+        "description": "The events are written to an event-log table in the same transaction and published after the transaction commits.",
+        "evidence": [
+          {
+            "ref": "eShop:src/Ordering.API/Application/Commands/CreateOrderCommandHandler.cs:33",
+            "quote": "await _orderingIntegrationEventService.AddAndSaveEventAsync(orderStartedIntegrationEvent);"
+          },
+          {
+            "ref": "eShop:src/Ordering.Domain/AggregatesModel/OrderAggregate/Order.cs:57",
+            "quote": "OrderStatus = OrderStatus.Submitted;"
+          },
+          {
+            "ref": "eShop:src/Ordering.API/Application/DomainEventHandlers/ValidateOrAddBuyerAggregateWhenOrderStartedDomainEventHandler.cs:51",
+            "quote": "await _orderingIntegrationEventService.AddAndSaveEventAsync(integrationEvent);"
+          },
+          {
+            "ref": "eShop:src/Ordering.API/Application/Behaviors/TransactionBehavior.cs:52",
+            "quote": "await _orderingIntegrationEventService.PublishEventsThroughEventBusAsync(transactionId);"
+          }
+        ]
+      },
+      {
+        "from": "webapp",
+        "to": "basket-api",
+        "kind": "req",
+        "label": "Delete the basket after the order call returns",
+        "protocol": "gRPC",
+        "call": {
+          "verb": "rpc",
+          "target": "Basket/DeleteBasket"
+        },
+        "request": {},
+        "description": "Ordering commits and publishes its events inside the same request, so the OrderStarted message below can be sent before this call is made; the diagram lists the WebApp call first.",
+        "evidence": [
+          {
+            "ref": "eShop:src/WebApp/Services/BasketState.cs:108",
+            "quote": "await DeleteBasketAsync();"
+          },
+          {
+            "ref": "eShop:src/WebApp/Services/BasketService.cs:17",
+            "quote": "basketClient.DeleteBasketAsync(new DeleteBasketRequest())"
+          }
+        ]
+      },
+      {
+        "from": "ordering-api",
+        "to": "rabbitmq",
+        "kind": "async",
+        "label": "Publish OrderStarted",
+        "protocol": "RabbitMQ",
+        "call": {
+          "verb": "publish",
+          "target": "OrderStartedIntegrationEvent"
+        },
+        "request": {
+          "UserId": "<buyer id>"
+        },
+        "requestSchema": {
+          "ref": "eShop:src/Ordering.API/Application/IntegrationEvents/Events/OrderStartedIntegrationEvent.cs:6",
+          "quote": "public record OrderStartedIntegrationEvent"
+        },
+        "description": "The routing key is the event's class name. The message also carries <code>Id</code> and <code>CreationDate</code> from the base record.",
+        "evidence": [
+          {
+            "ref": "eShop:src/EventBusRabbitMQ/RabbitMQEventBus.cs:33",
+            "quote": "var routingKey = @event.GetType().Name;"
+          },
+          {
+            "ref": "eShop:src/Ordering.API/Application/IntegrationEvents/OrderingIntegrationEventService.cs:24",
+            "quote": "await _eventBus.PublishAsync(logEvt.IntegrationEvent);"
+          }
+        ]
+      },
+      {
+        "from": "rabbitmq",
+        "to": "basket-api",
+        "kind": "async",
+        "label": "Basket deletes the buyer's basket (again)",
+        "protocol": "RabbitMQ",
+        "evidence": [
+          {
+            "ref": "eShop:src/Basket.API/Extensions/Extensions.cs:19",
+            "quote": ".AddSubscription<OrderStartedIntegrationEvent, OrderStartedIntegrationEventHandler>()"
+          },
+          {
+            "ref": "eShop:src/Basket.API/IntegrationEvents/EventHandling/OrderStartedIntegrationEventHandler.cs:14",
+            "quote": "await repository.DeleteBasketAsync(@event.UserId);"
+          }
+        ],
+        "noPayload": true
+      },
+      {
+        "from": "ordering-api",
+        "to": "rabbitmq",
+        "kind": "async",
+        "label": "Publish OrderStatusChangedToSubmitted",
+        "protocol": "RabbitMQ",
+        "call": {
+          "verb": "publish",
+          "target": "OrderStatusChangedToSubmittedIntegrationEvent"
+        },
+        "description": "WebApp subscribes to this and every other order-status event and uses the buyer id in it to refresh that user's order page.",
+        "requestSchema": {
+          "ref": "eShop:src/Ordering.API/Application/IntegrationEvents/Events/OrderStatusChangedTosubmittedIntegrationEvent.cs:3",
+          "quote": "public record OrderStatusChangedToSubmittedIntegrationEvent"
+        },
+        "evidence": [
+          {
+            "ref": "eShop:src/Ordering.API/Application/DomainEventHandlers/ValidateOrAddBuyerAggregateWhenOrderStartedDomainEventHandler.cs:50",
+            "quote": "new OrderStatusChangedToSubmittedIntegrationEvent("
+          },
+          {
+            "ref": "eShop:src/WebApp/Extensions/Extensions.cs:50",
+            "quote": "eventBus.AddSubscription<OrderStatusChangedToSubmittedIntegrationEvent"
+          }
+        ]
+      },
+      {
+        "from": "order-processor",
+        "to": "postgres",
+        "kind": "req",
+        "label": "Every CheckUpdateTime seconds: find orders still Submitted after the grace period",
+        "protocol": "PostgreSQL",
+        "payloadNote": "sql",
+        "description": "Defaults in appsettings: grace period 1 minute, poll every 30 seconds.",
+        "evidence": [
+          {
+            "ref": "eShop:src/OrderProcessor/Services/GracePeriodOrdersRepository.cs:27",
+            "quote": "\"OrderStatus\" = 'Submitted'"
+          },
+          {
+            "ref": "eShop:src/OrderProcessor/appsettings.json:15",
+            "quote": "\"GracePeriodTime\": \"1\""
+          },
+          {
+            "ref": "eShop:src/OrderProcessor/appsettings.json:16",
+            "quote": "\"CheckUpdateTime\": \"30\""
+          }
+        ]
+      },
+      {
+        "from": "order-processor",
+        "to": "rabbitmq",
+        "kind": "async",
+        "label": "Publish GracePeriodConfirmed for each such order",
+        "protocol": "RabbitMQ",
+        "call": {
+          "verb": "publish",
+          "target": "GracePeriodConfirmedIntegrationEvent"
+        },
+        "requestSchema": {
+          "ref": "eShop:src/OrderProcessor/Events/GracePeriodConfirmedIntegrationEvent.cs:5",
+          "quote": "public record GracePeriodConfirmedIntegrationEvent"
+        },
+        "evidence": [
+          {
+            "ref": "eShop:src/OrderProcessor/Services/GracePeriodManagerService.cs:56",
+            "quote": "new GracePeriodConfirmedIntegrationEvent(orderId)"
+          },
+          {
+            "ref": "eShop:src/OrderProcessor/Services/GracePeriodManagerService.cs:60",
+            "quote": "await eventBus.PublishAsync(confirmGracePeriodEvent);"
+          }
+        ]
+      },
+      {
+        "from": "rabbitmq",
+        "to": "ordering-api",
+        "kind": "async",
+        "label": "Ordering moves the order to AwaitingValidation",
+        "protocol": "RabbitMQ",
+        "description": "The status only changes if the order is currently Submitted.",
+        "noPayload": true,
+        "evidence": [
+          {
+            "ref": "eShop:src/Ordering.API/Application/IntegrationEvents/EventHandling/GracePeriodConfirmedIntegrationEventHandler.cs:19",
+            "quote": "new SetAwaitingValidationOrderStatusCommand(@event.OrderId)"
+          },
+          {
+            "ref": "eShop:src/Ordering.Domain/AggregatesModel/OrderAggregate/Order.cs:101",
+            "quote": "if (OrderStatus == OrderStatus.Submitted)"
+          }
+        ]
+      },
+      {
+        "from": "ordering-api",
+        "to": "rabbitmq",
+        "kind": "async",
+        "label": "Publish OrderStatusChangedToAwaitingValidation (with the stock lines)",
+        "protocol": "RabbitMQ",
+        "call": {
+          "verb": "publish",
+          "target": "OrderStatusChangedToAwaitingValidationIntegrationEvent"
+        },
+        "requestSchema": {
+          "ref": "eShop:src/Ordering.API/Application/IntegrationEvents/Events/OrderStatusChangedToAwaitingValidationIntegrationEvent.cs:3",
+          "quote": "public record OrderStatusChangedToAwaitingValidationIntegrationEvent"
+        },
+        "evidence": [
+          {
+            "ref": "eShop:src/Ordering.API/Application/DomainEventHandlers/OrderStatusChangedToAwaitingValidationDomainEventHandler.cs:33",
+            "quote": "new OrderStatusChangedToAwaitingValidationIntegrationEvent(order.Id"
+          }
+        ]
+      },
+      {
+        "from": "rabbitmq",
+        "to": "catalog-api",
+        "kind": "async",
+        "label": "Catalog checks stock for every line",
+        "protocol": "RabbitMQ",
+        "description": "A line has stock when <code>AvailableStock</code> is at least the ordered units.",
+        "noPayload": true,
+        "evidence": [
+          {
+            "ref": "eShop:src/Catalog.API/Extensions/Extensions.cs:32",
+            "quote": ".AddSubscription<OrderStatusChangedToAwaitingValidationIntegrationEvent"
+          },
+          {
+            "ref": "eShop:src/Catalog.API/IntegrationEvents/EventHandling/OrderStatusChangedToAwaitingValidationIntegrationEventHandler.cs:20",
+            "quote": "var hasStock = catalogItem.AvailableStock >= orderStockItem.Units;"
+          }
+        ]
+      },
+      {
+        "from": "catalog-api",
+        "to": "rabbitmq",
+        "kind": "async",
+        "label": "Publish OrderStockConfirmed, or OrderStockRejected if any line lacks stock",
+        "protocol": "RabbitMQ",
+        "call": {
+          "verb": "publish",
+          "target": "OrderStockConfirmedIntegrationEvent"
+        },
+        "request": {
+          "OrderId": 42
+        },
+        "requestSchema": {
+          "ref": "eShop:src/Catalog.API/IntegrationEvents/Events/OrderStockConfirmedIntegrationEvent.cs:3",
+          "quote": "public record OrderStockConfirmedIntegrationEvent(int OrderId)"
+        },
+        "evidence": [
+          {
+            "ref": "eShop:src/Catalog.API/IntegrationEvents/EventHandling/OrderStatusChangedToAwaitingValidationIntegrationEventHandler.cs:28",
+            "quote": "new OrderStockRejectedIntegrationEvent(@event.OrderId, confirmedOrderStockItems)"
+          },
+          {
+            "ref": "eShop:src/Catalog.API/IntegrationEvents/EventHandling/OrderStatusChangedToAwaitingValidationIntegrationEventHandler.cs:32",
+            "quote": "await catalogIntegrationEventService.PublishThroughEventBusAsync(confirmedIntegrationEvent);"
+          }
+        ]
+      },
+      {
+        "from": "rabbitmq",
+        "to": "ordering-api",
+        "kind": "async",
+        "label": "Ordering moves the order to StockConfirmed (a rejection is sent as a SetStockRejected command instead)",
+        "protocol": "RabbitMQ",
+        "description": "On rejection the order goes from AwaitingValidation to Cancelled, but that path raises no domain event, so no OrderStatusChangedToCancelled event is published for it.",
+        "noPayload": true,
+        "evidence": [
+          {
+            "ref": "eShop:src/Ordering.API/Application/IntegrationEvents/EventHandling/OrderStockConfirmedIntegrationEventHandler.cs:12",
+            "quote": "new SetStockConfirmedOrderStatusCommand(@event.OrderId)"
+          },
+          {
+            "ref": "eShop:src/Ordering.API/Application/IntegrationEvents/EventHandling/OrderStockRejectedIntegrationEventHandler.cs:15",
+            "quote": "new SetStockRejectedOrderStatusCommand(@event.OrderId, orderStockRejectedItems)"
+          },
+          {
+            "ref": "eShop:src/Ordering.Domain/AggregatesModel/OrderAggregate/Order.cs:110",
+            "quote": "if (OrderStatus == OrderStatus.AwaitingValidation)"
+          },
+          {
+            "ref": "eShop:src/Ordering.Domain/AggregatesModel/OrderAggregate/Order.cs:155",
+            "quote": "public void SetCancelledStatusWhenStockIsRejected("
+          }
+        ]
+      },
+      {
+        "from": "ordering-api",
+        "to": "rabbitmq",
+        "kind": "async",
+        "label": "Publish OrderStatusChangedToStockConfirmed",
+        "protocol": "RabbitMQ",
+        "call": {
+          "verb": "publish",
+          "target": "OrderStatusChangedToStockConfirmedIntegrationEvent"
+        },
+        "request": {
+          "OrderId": 42,
+          "OrderStatus": "StockConfirmed",
+          "BuyerName": "<name>",
+          "BuyerIdentityGuid": "<guid>"
+        },
+        "requestSchema": {
+          "ref": "eShop:src/Ordering.API/Application/IntegrationEvents/Events/OrderStatusChangedToStockConfirmedIntegrationEvent.cs:3",
+          "quote": "public record OrderStatusChangedToStockConfirmedIntegrationEvent"
+        },
+        "evidence": [
+          {
+            "ref": "eShop:src/Ordering.API/Application/DomainEventHandlers/OrderStatusChangedToStockConfirmedDomainEventHandler.cs:30",
+            "quote": "new OrderStatusChangedToStockConfirmedIntegrationEvent(order.Id"
+          }
+        ]
+      },
+      {
+        "from": "rabbitmq",
+        "to": "payment-processor",
+        "kind": "async",
+        "label": "Payment processor picks it up",
+        "protocol": "RabbitMQ",
+        "noPayload": true,
+        "evidence": [
+          {
+            "ref": "eShop:src/PaymentProcessor/Program.cs:6",
+            "quote": ".AddSubscription<OrderStatusChangedToStockConfirmedIntegrationEvent"
+          }
+        ]
+      },
+      {
+        "from": "payment-processor",
+        "to": "rabbitmq",
+        "kind": "async",
+        "label": "Publish OrderPaymentSucceeded, or OrderPaymentFailed when PaymentSucceeded is false",
+        "protocol": "RabbitMQ",
+        "call": {
+          "verb": "publish",
+          "target": "OrderPaymentSucceededIntegrationEvent"
+        },
+        "request": {
+          "OrderId": 42
+        },
+        "requestSchema": {
+          "ref": "eShop:src/PaymentProcessor/IntegrationEvents/Events/OrderPaymentSucceededIntegrationEvent.cs:3",
+          "quote": "public record OrderPaymentSucceededIntegrationEvent(int OrderId)"
+        },
+        "description": "No payment gateway is called; the outcome is the <code>PaymentSucceeded</code> option, <code>true</code> in appsettings.",
+        "evidence": [
+          {
+            "ref": "eShop:src/PaymentProcessor/IntegrationEvents/EventHandling/OrderStatusChangedToStockConfirmedIntegrationEventHandler.cs:21",
+            "quote": "if (options.CurrentValue.PaymentSucceeded)"
+          },
+          {
+            "ref": "eShop:src/PaymentProcessor/IntegrationEvents/EventHandling/OrderStatusChangedToStockConfirmedIntegrationEventHandler.cs:27",
+            "quote": "new OrderPaymentFailedIntegrationEvent(@event.OrderId)"
+          },
+          {
+            "ref": "eShop:src/PaymentProcessor/appsettings.json:15",
+            "quote": "\"PaymentSucceeded\": true"
+          }
+        ]
+      },
+      {
+        "from": "rabbitmq",
+        "to": "ordering-api",
+        "kind": "async",
+        "label": "Ordering marks the order Paid; on a payment failure it sends a cancel command instead",
+        "protocol": "RabbitMQ",
+        "noPayload": true,
+        "evidence": [
+          {
+            "ref": "eShop:src/Ordering.API/Application/IntegrationEvents/EventHandling/OrderPaymentSucceededIntegrationEventHandler.cs:12",
+            "quote": "new SetPaidOrderStatusCommand(@event.OrderId)"
+          },
+          {
+            "ref": "eShop:src/Ordering.API/Application/IntegrationEvents/EventHandling/OrderPaymentFailedIntegrationEventHandler.cs:12",
+            "quote": "new CancelOrderCommand(@event.OrderId)"
+          },
+          {
+            "ref": "eShop:src/Ordering.Domain/AggregatesModel/OrderAggregate/Order.cs:121",
+            "quote": "if (OrderStatus == OrderStatus.StockConfirmed)"
+          }
+        ]
+      },
+      {
+        "from": "ordering-api",
+        "to": "rabbitmq",
+        "kind": "async",
+        "label": "Publish OrderStatusChangedToPaid",
+        "protocol": "RabbitMQ",
+        "call": {
+          "verb": "publish",
+          "target": "OrderStatusChangedToPaidIntegrationEvent"
+        },
+        "request": {
+          "OrderId": 42,
+          "OrderStatus": "Paid",
+          "BuyerName": "<name>",
+          "BuyerIdentityGuid": "<guid>",
+          "OrderStockItems": [
+            {
+              "...": "..."
+            }
+          ]
+        },
+        "requestSchema": {
+          "ref": "eShop:src/Ordering.API/Application/IntegrationEvents/Events/OrderStatusChangedToPaidIntegrationEvent.cs:3",
+          "quote": "public record OrderStatusChangedToPaidIntegrationEvent"
+        },
+        "evidence": [
+          {
+            "ref": "eShop:src/Ordering.API/Application/DomainEventHandlers/OrderStatusChangedToPaidDomainEventHandler.cs:32",
+            "quote": "new OrderStatusChangedToPaidIntegrationEvent("
+          }
+        ]
+      },
+      {
+        "from": "rabbitmq",
+        "to": "catalog-api",
+        "kind": "async",
+        "label": "Catalog removes the ordered units from stock",
+        "protocol": "RabbitMQ",
+        "noPayload": true,
+        "evidence": [
+          {
+            "ref": "eShop:src/Catalog.API/Extensions/Extensions.cs:33",
+            "quote": ".AddSubscription<OrderStatusChangedToPaidIntegrationEvent"
+          },
+          {
+            "ref": "eShop:src/Catalog.API/IntegrationEvents/EventHandling/OrderStatusChangedToPaidIntegrationEventHandler.cs:17",
+            "quote": "catalogItem?.RemoveStock(orderStockItem.Units);"
+          }
+        ]
+      },
+      {
+        "from": "rabbitmq",
+        "to": "webhooks-api",
+        "kind": "async",
+        "label": "Webhooks API looks up OrderPaid subscribers and POSTs them the event",
+        "protocol": "RabbitMQ",
+        "noPayload": true,
+        "evidence": [
+          {
+            "ref": "eShop:src/Webhooks.API/Extensions/Extensions.cs:23",
+            "quote": "AddSubscription<OrderStatusChangedToPaidIntegrationEvent"
+          },
+          {
+            "ref": "eShop:src/Webhooks.API/IntegrationEvents/OrderStatusChangedToPaidIntegrationEventHandler.cs:10",
+            "quote": "GetSubscriptionsOfType(WebhookType.OrderPaid)"
+          }
+        ]
+      }
+    ]
+  }
+]

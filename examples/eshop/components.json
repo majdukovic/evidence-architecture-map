@@ -1,0 +1,353 @@
+{
+  "layers": [
+    {
+      "id": "clients",
+      "label": "Front ends and gateways"
+    },
+    {
+      "id": "services",
+      "label": "HTTP / gRPC services"
+    },
+    {
+      "id": "workers",
+      "label": "Background workers"
+    },
+    {
+      "id": "infra",
+      "label": "Infrastructure"
+    },
+    {
+      "id": "hosting",
+      "label": "Hosting and orchestration"
+    }
+  ],
+  "components": [
+    {
+      "id": "webapp",
+      "label": "WebApp (storefront)",
+      "short": "Blazor web shop",
+      "layer": "clients",
+      "repo": "eShop",
+      "purpose": "The customer-facing web shop. It calls <b>Catalog</b> over HTTP, <b>Basket</b> over gRPC and <b>Ordering</b> over HTTP, signs users in against <b>Identity</b>, and listens to order-status events on RabbitMQ to refresh the order page.",
+      "exposes": [
+        "Web UI",
+        "GET /product-images/{id} (forwarded to Catalog)"
+      ],
+      "evidence": [
+        {
+          "ref": "eShop:src/eShop.AppHost/AppHost.cs:71",
+          "quote": "AddDotnetProject(\"webapp\", \"../WebApp\""
+        },
+        {
+          "ref": "eShop:src/WebApp/Program.cs:32",
+          "quote": "app.MapForwarder(\"/product-images/{id}\""
+        }
+      ]
+    },
+    {
+      "id": "mobile-bff",
+      "label": "Mobile BFF (YARP)",
+      "short": "Reverse proxy",
+      "layer": "clients",
+      "repo": "eShop",
+      "purpose": "A YARP reverse proxy declared in the AppHost. It forwards catalog, ordering and identity routes to the matching services. There is no Basket route on it.",
+      "gateway": true,
+      "exposes": [
+        "/api/catalog/*",
+        "/api/orders/*",
+        "/identity/*"
+      ],
+      "callout": "Catalog and orders routes only match requests that carry an api-version query parameter (orders: 1.0 or 1).",
+      "evidence": [
+        {
+          "ref": "eShop:src/eShop.AppHost/AppHost.cs:62",
+          "quote": "builder.AddYarp(\"mobile-bff\")"
+        },
+        {
+          "ref": "eShop:src/eShop.AppHost/Extensions.cs:146",
+          "quote": "yarp.AddRoute(\"/api/orders/{*any}\""
+        },
+        {
+          "ref": "eShop:src/eShop.AppHost/Extensions.cs:147",
+          "quote": "Name = \"api-version\", Values = [\"1.0\", \"1\"]"
+        }
+      ]
+    },
+    {
+      "id": "webhooks-client",
+      "label": "Webhook client (sample)",
+      "short": "Webhook receiver demo",
+      "layer": "clients",
+      "repo": "eShop",
+      "purpose": "A sample web app that registers webhook subscriptions with <b>Webhooks API</b> and receives the callbacks on its own endpoint.",
+      "exposes": [
+        "POST /webhook-received"
+      ],
+      "evidence": [
+        {
+          "ref": "eShop:src/eShop.AppHost/AppHost.cs:67",
+          "quote": "AddDotnetProject(\"webhooksclient\", \"../WebhookClient\""
+        },
+        {
+          "ref": "eShop:src/WebhookClient/Endpoints/WebhookEndpoints.cs:31",
+          "quote": "app.MapPost(\"/webhook-received\""
+        }
+      ]
+    },
+    {
+      "id": "identity-api",
+      "label": "Identity API",
+      "short": "OpenID Connect server",
+      "layer": "services",
+      "repo": "eShop",
+      "purpose": "The sign-in server (IdentityServer). WebApp signs users in against it, and Basket, Ordering and Webhooks use it as the authority for bearer tokens.",
+      "exposes": [
+        "OpenID Connect endpoints"
+      ],
+      "stores": [
+        "PostgreSQL: identitydb"
+      ],
+      "evidence": [
+        {
+          "ref": "eShop:src/eShop.AppHost/AppHost.cs:25",
+          "quote": "AddDotnetProject(\"identity-api\", \"../Identity.API\""
+        },
+        {
+          "ref": "eShop:src/Identity.API/Program.cs:18",
+          "quote": "builder.Services.AddIdentityServer(options"
+        }
+      ]
+    },
+    {
+      "id": "basket-api",
+      "label": "Basket API",
+      "short": "Shopping basket (gRPC)",
+      "layer": "services",
+      "repo": "eShop",
+      "purpose": "Holds each user's basket as a list of product ids and quantities in Redis, behind a gRPC service. It also clears the basket when it hears that an order was started.",
+      "callout": "When the basket is written, only the product id and quantity of each line are filled in; the name, price and picture fields stay empty. Names and prices are looked up from Catalog by the caller.",
+      "exposes": [
+        "gRPC: Basket.GetBasket / UpdateBasket / DeleteBasket"
+      ],
+      "stores": [
+        "Redis: /basket/{userId}"
+      ],
+      "evidence": [
+        {
+          "ref": "eShop:src/eShop.AppHost/AppHost.cs:32",
+          "quote": "AddDotnetProject(\"basket-api\", \"../Basket.API\""
+        },
+        {
+          "ref": "eShop:src/Basket.API/Program.cs:12",
+          "quote": "app.MapGrpcService<BasketService>();"
+        },
+        {
+          "ref": "eShop:src/Basket.API/Proto/basket.proto:7",
+          "quote": "service Basket {"
+        }
+      ]
+    },
+    {
+      "id": "catalog-api",
+      "label": "Catalog API",
+      "short": "Products and stock",
+      "layer": "services",
+      "repo": "eShop",
+      "purpose": "Serves the product list, brands, types and pictures over a versioned HTTP API, and owns stock levels. It answers stock checks and reduces stock when an order is paid, using order events.",
+      "exposes": [
+        "GET /api/catalog/items",
+        "GET /api/catalog/items/by?ids=",
+        "GET /api/catalog/items/{id}/pic",
+        "Event: ProductPriceChangedIntegrationEvent"
+      ],
+      "stores": [
+        "PostgreSQL: catalogdb (pgvector image)"
+      ],
+      "evidence": [
+        {
+          "ref": "eShop:src/eShop.AppHost/AppHost.cs:38",
+          "quote": "AddDotnetProject(\"catalog-api\", \"../Catalog.API\""
+        },
+        {
+          "ref": "eShop:src/Catalog.API/Apis/CatalogApi.cs:17",
+          "quote": "vApi.MapGroup(\"api/catalog\")"
+        }
+      ]
+    },
+    {
+      "id": "ordering-api",
+      "label": "Ordering API",
+      "short": "Orders and their status",
+      "layer": "services",
+      "repo": "eShop",
+      "purpose": "Creates orders and owns the order status. Status changes are driven by events from other components and most changes are published back on RabbitMQ (cancelling because stock was rejected is not).",
+      "callout": "An order is created as Submitted. Stock checks, payment and the grace period arrive as events; shipping and cancelling are HTTP calls to Ordering API.",
+      "exposes": [
+        "POST /api/orders",
+        "GET /api/orders",
+        "PUT /api/orders/cancel",
+        "PUT /api/orders/ship"
+      ],
+      "stores": [
+        "PostgreSQL: orderingdb (schema ordering)"
+      ],
+      "evidence": [
+        {
+          "ref": "eShop:src/eShop.AppHost/AppHost.cs:42",
+          "quote": "AddDotnetProject(\"ordering-api\", \"../Ordering.API\""
+        },
+        {
+          "ref": "eShop:src/Ordering.API/Apis/OrdersApi.cs:9",
+          "quote": "app.MapGroup(\"api/orders\")"
+        }
+      ]
+    },
+    {
+      "id": "webhooks-api",
+      "label": "Webhooks API",
+      "short": "Webhook subscriptions",
+      "layer": "services",
+      "repo": "eShop",
+      "purpose": "Stores webhook subscriptions and POSTs a message to each subscriber's destination URL when an order is paid or shipped. It also subscribes to price-change events, but that handler does nothing yet.",
+      "callout": "Price-change webhooks are not implemented: the ProductPriceChanged handler just returns.",
+      "exposes": [
+        "POST /api/webhooks",
+        "GET /api/webhooks"
+      ],
+      "stores": [
+        "PostgreSQL: webhooksdb"
+      ],
+      "evidence": [
+        {
+          "ref": "eShop:src/eShop.AppHost/AppHost.cs:56",
+          "quote": "AddDotnetProject(\"webhooks-api\", \"../Webhooks.API\""
+        },
+        {
+          "ref": "eShop:src/Webhooks.API/Apis/WebHooksApi.cs:11",
+          "quote": "app.MapGroup(\"/api/webhooks\")"
+        },
+        {
+          "ref": "eShop:src/Webhooks.API/IntegrationEvents/ProductPriceChangedIntegrationEventHandler.cs:7",
+          "quote": "return Task.CompletedTask;"
+        }
+      ]
+    },
+    {
+      "id": "order-processor",
+      "label": "Order processor",
+      "short": "Grace-period timer",
+      "layer": "workers",
+      "repo": "eShop",
+      "purpose": "A background worker that polls the ordering database for orders that have stayed Submitted past the grace period and publishes an event for each.",
+      "stores": [
+        "Reads PostgreSQL: orderingdb"
+      ],
+      "evidence": [
+        {
+          "ref": "eShop:src/eShop.AppHost/AppHost.cs:48",
+          "quote": "AddDotnetProject(\"order-processor\", \"../OrderProcessor\""
+        },
+        {
+          "ref": "eShop:src/OrderProcessor/Extensions/Extensions.cs:19",
+          "quote": "AddHostedService<GracePeriodManagerService>()"
+        }
+      ]
+    },
+    {
+      "id": "payment-processor",
+      "label": "Payment processor",
+      "short": "Simulated payments",
+      "layer": "workers",
+      "repo": "eShop",
+      "purpose": "Listens for orders whose stock is confirmed and publishes a payment succeeded or failed event. The outcome comes from a configuration flag; no payment gateway is called.",
+      "callout": "Payment is simulated: success or failure is the PaymentSucceeded setting, not a real charge.",
+      "evidence": [
+        {
+          "ref": "eShop:src/eShop.AppHost/AppHost.cs:53",
+          "quote": "AddDotnetProject(\"payment-processor\", \"../PaymentProcessor\""
+        },
+        {
+          "ref": "eShop:src/PaymentProcessor/IntegrationEvents/EventHandling/OrderStatusChangedToStockConfirmedIntegrationEventHandler.cs:21",
+          "quote": "if (options.CurrentValue.PaymentSucceeded)"
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq",
+      "label": "RabbitMQ event bus",
+      "short": "Integration events",
+      "layer": "infra",
+      "repo": "eShop",
+      "purpose": "The message broker. All integration events go through one direct exchange, with the event's class name as the routing key.",
+      "exposes": [
+        "Exchange: eshop_event_bus (direct)"
+      ],
+      "evidence": [
+        {
+          "ref": "eShop:src/eShop.AppHost/AppHost.cs:10",
+          "quote": "builder.AddRabbitMQ(\"eventbus\")"
+        },
+        {
+          "ref": "eShop:src/EventBusRabbitMQ/RabbitMQEventBus.cs:20",
+          "quote": "ExchangeName = \"eshop_event_bus\""
+        },
+        {
+          "ref": "eShop:src/EventBusRabbitMQ/RabbitMQEventBus.cs:33",
+          "quote": "var routingKey = @event.GetType().Name;"
+        }
+      ]
+    },
+    {
+      "id": "redis",
+      "label": "Redis",
+      "short": "Basket store",
+      "layer": "infra",
+      "repo": "eShop",
+      "purpose": "Key-value store used by Basket API.",
+      "evidence": [
+        {
+          "ref": "eShop:src/eShop.AppHost/AppHost.cs:9",
+          "quote": "builder.AddRedis(\"redis\")"
+        }
+      ]
+    },
+    {
+      "id": "postgres",
+      "label": "PostgreSQL",
+      "short": "Four databases",
+      "layer": "infra",
+      "repo": "eShop",
+      "purpose": "One Postgres server hosting catalogdb, identitydb, orderingdb and webhooksdb. Ordering API and Order processor both connect to orderingdb.",
+      "stores": [
+        "catalogdb",
+        "identitydb",
+        "orderingdb",
+        "webhooksdb"
+      ],
+      "evidence": [
+        {
+          "ref": "eShop:src/eShop.AppHost/AppHost.cs:12",
+          "quote": "builder.AddPostgres(\"postgres\")"
+        },
+        {
+          "ref": "eShop:src/eShop.AppHost/AppHost.cs:19",
+          "quote": "postgres.AddDatabase(\"orderingdb\")"
+        }
+      ]
+    },
+    {
+      "id": "apphost",
+      "label": "Aspire AppHost",
+      "short": "Wires everything",
+      "layer": "hosting",
+      "repo": "eShop",
+      "purpose": "The Aspire application model. It declares every project and container above and injects the references (connection strings, service URLs) that services use to find each other.",
+      "evidence": [
+        {
+          "ref": "eShop:src/eShop.AppHost/AppHost.cs:4",
+          "quote": "DistributedApplication.CreateBuilder(args)"
+        }
+      ]
+    }
+  ]
+}

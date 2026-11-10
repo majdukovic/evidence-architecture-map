@@ -1,0 +1,10 @@
+{
+  "verifiedOn": "2026-11-10",
+  "repos": {
+    "eShop": {
+      "branch": "main",
+      "sha": "913acea66708a59595351174cee9b29f37179d29",
+      "web": "https://github.com/dotnet/eShop"
+    }
+  }
+}

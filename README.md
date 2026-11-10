@@ -16,9 +16,15 @@ agent try to disprove what is left, and builds:
 Anything the code cannot confirm is left out and recorded in `review/dropped.md`. It works for any language and any
 git host, including monorepos.
 
-See the demo: [`examples/online-boutique`](examples/online-boutique), a map of Google's
-[Online Boutique](https://github.com/GoogleCloudPlatform/microservices-demo) microservices demo
-(17 components, 25 connections, 3 flows, 411 checked references).
+Examples, each with its verification results:
+
+| Example | Stack | Map | Spot-check of 30 claims |
+|---|---|---|---|
+| [`online-boutique`](examples/online-boutique) | Go, C#, Node, Python, Java; gRPC | 17 components, 25 connections, 3 flows, 411 references | (built step by step, reviewed twice) |
+| [`eshop`](examples/eshop) | .NET; RabbitMQ events, gRPC, PostgreSQL, Redis | 14 components, 28 connections, 3 flows, 221 references | 26 correct, 4 minor, 0 wrong |
+| [`petclinic`](examples/petclinic) | Java Spring Cloud; gateway, Eureka, config server; **two repos** | 17 components, 35 connections, 5 flows, 316 references | 28 correct, 2 minor, 0 wrong |
+
+The eShop and PetClinic maps were built by unattended runs of the plugin with no human steering.
 
 ![Map view: a component card with its connections and evidence](docs/map.png)
 ![Flow view: a step with its request payload and the definition it comes from](docs/flow.png)
@@ -50,6 +56,11 @@ into your project's `.claude/skills/` (or `~/.claude/skills/`).
 [`standalone.md`](prompts/standalone.md) when you cannot run the kit's scripts at all (Markdown output only).
 
 **Requirements:** git and Node.js 18 or newer. No npm packages. Optional: Playwright, for the UI audit.
+
+**Unattended runs** (`claude -p`, CI): give the scope answers in the prompt (see [`prompts/build-map.md`](prompts/build-map.md)),
+load the plugin with `--plugin-dir`, and allow the tools the skill needs, for example
+`--allowedTools "Skill" "Agent" "Read" "Write" "Edit" "Glob" "Grep" "Bash(git:*)" "Bash(node:*)"`. Set
+`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` so a slow verification agent is never stopped before the session ends.
 
 ## How it works
 

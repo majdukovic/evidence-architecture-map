@@ -1,0 +1,622 @@
+[
+  {
+    "from": "browser",
+    "to": "api-gateway",
+    "protocol": "HTTP",
+    "what": "The Vue pages call the gateway's /api/... paths with fetch",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/api/client.js:69",
+        "quote": "response = await fetch(url, {"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerDetailsPage.js:13",
+        "quote": "/api/gateway/owners/${route.params.ownerId}"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/VetsPage.js:10",
+        "quote": "request('/api/vet/vets'"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/components/ChatBox.js:47",
+        "quote": "request('/api/genai/chatclient', jsonRequest('POST', query)"
+      }
+    ]
+  },
+  {
+    "from": "api-gateway",
+    "to": "customers-service",
+    "protocol": "HTTP",
+    "what": "Routes /api/customer/** to it (owner and pet create, read and edit), and the gateway controller fetches an owner with its pets (WebClient, resolved by service name through Eureka load balancing)",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/application/CustomersServiceClient.java:37",
+        "quote": "http://customers-service/owners/{ownerId}"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java:60",
+        "quote": "public WebClient.Builder loadBalancedWebClientBuilder()"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/resources/application.yml:3",
+        "quote": "name: customers-service"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:34",
+        "quote": "uri: lb://customers-service"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:36",
+        "quote": "Path=/api/customer/**"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:38",
+        "quote": "StripPrefix=2"
+      }
+    ]
+  },
+  {
+    "from": "api-gateway",
+    "to": "visits-service",
+    "protocol": "HTTP",
+    "what": "Gateway controller fetches visits for all of an owner's pets in one call (WebClient, resolved by service name)",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/application/VisitsServiceClient.java:34",
+        "quote": "\"http://visits-service/\""
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/application/VisitsServiceClient.java:45",
+        "quote": "pets/visits?petId={petId}"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-visits-service/src/main/java/org/springframework/samples/petclinic/visits/web/VisitResource.java:72",
+        "quote": "@GetMapping(\"pets/visits\")"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:28",
+        "quote": "uri: lb://visits-service"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:30",
+        "quote": "Path=/api/visit/**"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:32",
+        "quote": "StripPrefix=2"
+      }
+    ]
+  },
+  {
+    "from": "customers-service",
+    "to": "customers-db",
+    "protocol": "JDBC",
+    "what": "JPA entities map to owners, pets and types tables in an embedded, in-process HSQLDB (MySQL with the mysql profile)",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/model/Owner.java:38",
+        "quote": "@Table(name = \"owners\")"
+      },
+      {
+        "ref": "spring-petclinic-microservices-config:application.yml:13",
+        "quote": "schema-locations: classpath*:db/hsqldb/schema.sql"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/pom.xml:71",
+        "quote": "<artifactId>hsqldb</artifactId>"
+      }
+    ]
+  },
+  {
+    "from": "visits-service",
+    "to": "visits-db",
+    "protocol": "JDBC",
+    "what": "JPA entity maps to the visits table in an embedded, in-process HSQLDB (MySQL with the mysql profile)",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-visits-service/src/main/java/org/springframework/samples/petclinic/visits/model/Visit.java:32",
+        "quote": "@Table(name = \"visits\")"
+      },
+      {
+        "ref": "spring-petclinic-microservices-config:application.yml:13",
+        "quote": "schema-locations: classpath*:db/hsqldb/schema.sql"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-visits-service/pom.xml:64",
+        "quote": "<artifactId>hsqldb</artifactId>"
+      }
+    ]
+  },
+  {
+    "from": "api-gateway",
+    "to": "config-server",
+    "protocol": "HTTP",
+    "what": "Imports configuration at startup via spring.config.import (docker profile: configserver:http://config-server:8888)",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:53",
+        "quote": "import: configserver:http://config-server:8888"
+      }
+    ]
+  },
+  {
+    "from": "customers-service",
+    "to": "config-server",
+    "protocol": "HTTP",
+    "what": "Imports configuration at startup via spring.config.import",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/resources/application.yml:13",
+        "quote": "import: configserver:http://config-server:8888"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/resources/application.yml:5",
+        "quote": "${CONFIG_SERVER_URL:http://localhost:8888/}"
+      }
+    ]
+  },
+  {
+    "from": "visits-service",
+    "to": "config-server",
+    "protocol": "HTTP",
+    "what": "Imports configuration at startup via spring.config.import",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-visits-service/src/main/resources/application.yml:13",
+        "quote": "import: configserver:http://config-server:8888"
+      }
+    ]
+  },
+  {
+    "from": "vets-service",
+    "to": "config-server",
+    "protocol": "HTTP",
+    "what": "Imports configuration at startup via spring.config.import",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-vets-service/src/main/resources/application.yml:16",
+        "quote": "import: configserver:http://config-server:8888"
+      }
+    ]
+  },
+  {
+    "from": "genai-service",
+    "to": "config-server",
+    "protocol": "HTTP",
+    "what": "Imports configuration at startup via spring.config.import",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/resources/application.yml:45",
+        "quote": "import: configserver:http://config-server:8888"
+      }
+    ]
+  },
+  {
+    "from": "discovery-server",
+    "to": "config-server",
+    "protocol": "HTTP",
+    "what": "Imports its own configuration (port, standalone Eureka settings) at startup",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-discovery-server/src/main/resources/application.yml:20",
+        "quote": "import: configserver:http://config-server:8888"
+      }
+    ]
+  },
+  {
+    "from": "admin-server",
+    "to": "config-server",
+    "protocol": "HTTP",
+    "what": "Imports configuration at startup via spring.config.import",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-admin-server/src/main/resources/application.yml:13",
+        "quote": "import: configserver:http://config-server:8888"
+      }
+    ]
+  },
+  {
+    "from": "config-server",
+    "to": "config-repo",
+    "protocol": "Git over HTTPS",
+    "what": "Reads configuration files from the config repo (default label main); a native file-system backend is available with the native profile and GIT_REPO",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-config-server/src/main/resources/application.yml:7",
+        "quote": "spring-petclinic/spring-petclinic-microservices-config"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-config-server/src/main/resources/application.yml:8",
+        "quote": "default-label: main"
+      }
+    ]
+  },
+  {
+    "from": "api-gateway",
+    "to": "discovery-server",
+    "protocol": "HTTP (Eureka)",
+    "what": "Registers with Eureka (docker profile defaultZone from the config repo); also resolves lb:// route targets through discovery",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices-config:api-gateway.yml:22",
+        "quote": "defaultZone: http://discovery-server:8761/eureka/"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java:44",
+        "quote": "@EnableDiscoveryClient"
+      }
+    ]
+  },
+  {
+    "from": "customers-service",
+    "to": "discovery-server",
+    "protocol": "HTTP (Eureka)",
+    "what": "Registers with Eureka using eureka.client.serviceUrl.defaultZone",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices-config:customers-service.yml:20",
+        "quote": "defaultZone: http://discovery-server:8761/eureka/"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/CustomersServiceApplication.java:25",
+        "quote": "@EnableDiscoveryClient"
+      }
+    ]
+  },
+  {
+    "from": "visits-service",
+    "to": "discovery-server",
+    "protocol": "HTTP (Eureka)",
+    "what": "Registers with Eureka using eureka.client.serviceUrl.defaultZone",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices-config:visits-service.yml:20",
+        "quote": "defaultZone: http://discovery-server:8761/eureka/"
+      }
+    ]
+  },
+  {
+    "from": "vets-service",
+    "to": "discovery-server",
+    "protocol": "HTTP (Eureka)",
+    "what": "Registers with Eureka using eureka.client.serviceUrl.defaultZone",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices-config:vets-service.yml:26",
+        "quote": "defaultZone: http://discovery-server:8761/eureka/"
+      }
+    ]
+  },
+  {
+    "from": "genai-service",
+    "to": "discovery-server",
+    "protocol": "HTTP (Eureka)",
+    "what": "Registers with Eureka using eureka.client.serviceUrl.defaultZone",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices-config:genai-service.yml:20",
+        "quote": "defaultZone: http://discovery-server:8761/eureka/"
+      }
+    ]
+  },
+  {
+    "from": "admin-server",
+    "to": "discovery-server",
+    "protocol": "HTTP (Eureka)",
+    "what": "Is an Eureka discovery client pointed at discovery-server",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices-config:admin-server.yml:12",
+        "quote": "defaultZone: http://discovery-server:8761/eureka/"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-admin-server/src/main/java/org/springframework/samples/petclinic/admin/SpringBootAdminApplication.java:25",
+        "quote": "@EnableDiscoveryClient"
+      }
+    ]
+  },
+  {
+    "from": "prometheus",
+    "to": "api-gateway",
+    "protocol": "HTTP",
+    "what": "Scrapes /actuator/prometheus",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:docker/prometheus/prometheus.yml:17",
+        "quote": "['api-gateway:8080']"
+      },
+      {
+        "ref": "spring-petclinic-microservices:docker/prometheus/prometheus.yml:15",
+        "quote": "metrics_path: /actuator/prometheus"
+      }
+    ]
+  },
+  {
+    "from": "prometheus",
+    "to": "customers-service",
+    "protocol": "HTTP",
+    "what": "Scrapes /actuator/prometheus",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:docker/prometheus/prometheus.yml:22",
+        "quote": "['customers-service:8081']"
+      }
+    ]
+  },
+  {
+    "from": "prometheus",
+    "to": "visits-service",
+    "protocol": "HTTP",
+    "what": "Scrapes /actuator/prometheus",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:docker/prometheus/prometheus.yml:27",
+        "quote": "['visits-service:8082']"
+      }
+    ]
+  },
+  {
+    "from": "prometheus",
+    "to": "vets-service",
+    "protocol": "HTTP",
+    "what": "Scrapes /actuator/prometheus",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:docker/prometheus/prometheus.yml:32",
+        "quote": "['vets-service:8083']"
+      }
+    ]
+  },
+  {
+    "from": "grafana",
+    "to": "prometheus",
+    "protocol": "HTTP",
+    "what": "Provisioned default datasource of type prometheus at http://prometheus-server:9090",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:docker/grafana/provisioning/datasources/all.yml:10",
+        "quote": "url: http://prometheus-server:9090"
+      },
+      {
+        "ref": "spring-petclinic-microservices:docker-compose.yml:153",
+        "quote": "prometheus-server:"
+      }
+    ]
+  },
+  {
+    "from": "api-gateway",
+    "to": "tracing-server",
+    "protocol": "HTTP (Zipkin)",
+    "what": "Exports spans to the zipkin endpoint set in the shared config for the docker profile",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices-config:application.yml:92",
+        "quote": "http://tracing-server:9411/api/v2/spans"
+      },
+      {
+        "ref": "spring-petclinic-microservices:docker-compose.yml:118",
+        "quote": "container_name: tracing-server"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/pom.xml:62",
+        "quote": "<artifactId>spring-boot-starter-zipkin</artifactId>"
+      },
+      {
+        "ref": "spring-petclinic-microservices:docker/Dockerfile:14",
+        "quote": "SPRING_PROFILES_ACTIVE=docker"
+      }
+    ]
+  },
+  {
+    "from": "customers-service",
+    "to": "tracing-server",
+    "protocol": "HTTP (Zipkin)",
+    "what": "Exports spans to the zipkin endpoint set in the shared config for the docker profile",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices-config:application.yml:92",
+        "quote": "http://tracing-server:9411/api/v2/spans"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/pom.xml:49",
+        "quote": "<artifactId>spring-boot-starter-zipkin</artifactId>"
+      },
+      {
+        "ref": "spring-petclinic-microservices:docker/Dockerfile:14",
+        "quote": "SPRING_PROFILES_ACTIVE=docker"
+      }
+    ]
+  },
+  {
+    "from": "visits-service",
+    "to": "tracing-server",
+    "protocol": "HTTP (Zipkin)",
+    "what": "Exports spans to the zipkin endpoint set in the shared config for the docker profile",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices-config:application.yml:92",
+        "quote": "http://tracing-server:9411/api/v2/spans"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-visits-service/pom.xml:48",
+        "quote": "<artifactId>spring-boot-starter-zipkin</artifactId>"
+      },
+      {
+        "ref": "spring-petclinic-microservices:docker/Dockerfile:14",
+        "quote": "SPRING_PROFILES_ACTIVE=docker"
+      }
+    ]
+  },
+  {
+    "from": "vets-service",
+    "to": "tracing-server",
+    "protocol": "HTTP (Zipkin)",
+    "what": "Exports spans to the zipkin endpoint set in the shared config for the docker profile",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices-config:application.yml:92",
+        "quote": "http://tracing-server:9411/api/v2/spans"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-vets-service/pom.xml:57",
+        "quote": "<artifactId>spring-boot-starter-zipkin</artifactId>"
+      },
+      {
+        "ref": "spring-petclinic-microservices:docker/Dockerfile:14",
+        "quote": "SPRING_PROFILES_ACTIVE=docker"
+      }
+    ]
+  },
+  {
+    "from": "genai-service",
+    "to": "tracing-server",
+    "protocol": "HTTP (Zipkin)",
+    "what": "Exports spans to the zipkin endpoint set in the shared config for the docker profile",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices-config:application.yml:92",
+        "quote": "http://tracing-server:9411/api/v2/spans"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/pom.xml:62",
+        "quote": "<artifactId>spring-boot-starter-zipkin</artifactId>"
+      },
+      {
+        "ref": "spring-petclinic-microservices:docker/Dockerfile:14",
+        "quote": "SPRING_PROFILES_ACTIVE=docker"
+      }
+    ]
+  },
+  {
+    "from": "api-gateway",
+    "to": "vets-service",
+    "protocol": "HTTP",
+    "what": "Gateway route: requests to /api/vet/** are sent to vets-service via the load-balanced name, with the first two path segments stripped (so /api/vet/vets becomes /vets)",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:22",
+        "quote": "uri: lb://vets-service"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:24",
+        "quote": "Path=/api/vet/**"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:26",
+        "quote": "StripPrefix=2"
+      }
+    ]
+  },
+  {
+    "from": "vets-service",
+    "to": "vets-db",
+    "protocol": "JDBC",
+    "what": "Reads all vets (with specialties) through a Spring Data JPA repository",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-vets-service/src/main/java/org/springframework/samples/petclinic/vets/model/VetRepository.java:30",
+        "quote": "interface VetRepository extends JpaRepository<Vet, Integer>"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-vets-service/src/main/java/org/springframework/samples/petclinic/vets/model/Vet.java:37",
+        "quote": "@Table(name = \"vets\")"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-vets-service/src/main/java/org/springframework/samples/petclinic/vets/web/VetResource.java:47",
+        "quote": "vetRepository.findAll()"
+      }
+    ]
+  },
+  {
+    "from": "api-gateway",
+    "to": "genai-service",
+    "protocol": "HTTP",
+    "what": "Gateway route: /api/genai/** goes to genai-service via the load-balanced name, prefix stripped (so /chatclient), with a circuit breaker falling back to /fallback",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:40",
+        "quote": "uri: lb://genai-service"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:42",
+        "quote": "Path=/api/genai/**"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:45",
+        "quote": "CircuitBreaker=name=genaiCircuitBreaker"
+      }
+    ]
+  },
+  {
+    "from": "genai-service",
+    "to": "llm-provider",
+    "protocol": "HTTP",
+    "what": "Sends the user's message to the chat model through the Spring AI ChatClient (OpenAI starter), with the tools registered",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:53",
+        "quote": ".defaultTools(petclinicTools)"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:65",
+        "quote": ".call()"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/pom.xml:27",
+        "quote": "spring-ai-starter-model-openai"
+      }
+    ]
+  },
+  {
+    "from": "genai-service",
+    "to": "customers-service",
+    "protocol": "HTTP",
+    "what": "Tool calls go direct to customers-service, not through the gateway: the base URI is the first Eureka instance of customers-service; calls are GET /owners, POST /owners and POST /owners/{ownerId}/pets",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/AIDataProvider.java:90",
+        "quote": "discoveryClient.getInstances(\"customers-service\").get(0).getUri()"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/AIDataProvider.java:45",
+        "quote": ".uri(getCustomerServiceUri() + \"/owners\")"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/AIDataProvider.java:73",
+        "quote": "\"/owners/\" + ownerId + \"/pets\""
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/AIDataProvider.java:82",
+        "quote": ".uri(getCustomerServiceUri() + \"/owners\")"
+      }
+    ]
+  },
+  {
+    "from": "genai-service",
+    "to": "vets-service",
+    "protocol": "HTTP",
+    "what": "Dormant fallback: the startup listener fetches GET /vets via the load-balanced name vets-service to fill the vector store only when vectorstore.json is absent from the classpath; the file is committed, so by default no call is made.",
+    "evidence": [
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/VectorStoreController.java:66",
+        "quote": "\"http://vets-service/\""
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/VectorStoreController.java:69",
+        "quote": ".uri(vetsHostname + \"vets\")"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/VectorStoreController.java:54",
+        "quote": "if (resource.exists()) {"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/AIBeanConfiguration.java:25",
+        "quote": "@LoadBalanced"
+      },
+      {
+        "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/VectorStoreController.java:50",
+        "quote": "loadVetDataToVectorStoreOnStartup(ApplicationStartedEvent"
+      }
+    ]
+  }
+]

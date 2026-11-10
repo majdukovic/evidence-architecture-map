@@ -10,7 +10,10 @@ at it, leave it out. The HTML and Markdown are generated; edit only the JSON (an
 
 The scripts and rules live in the `build-architecture-map` skill folder: `scripts/build.js`, `scripts/verify.js`,
 `references/evidence-rules.md`, `references/data-format.md`, `references/where-to-look.md`,
-`references/review-brief.md`. Read the evidence rules first. Run scripts with `node`.
+`references/review-brief.md`. Read the evidence rules first. Run scripts with `node`; `scripts/show.js <repo-dir> <path>
+[from] [to]` prints a file from the default branch with line numbers, for exact quotes. Read code with
+`git -C <repo> show origin/HEAD:<path>`, one simple command per call, and wait for any review agent to finish before
+ending your turn.
 
 ## 1. Baseline
 

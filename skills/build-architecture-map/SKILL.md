@@ -14,8 +14,8 @@ that proves it**. Output: an interactive page (`architecture.html`) and `ARCHITE
 tickets, dashboards, chat and earlier AI sessions are hints for where to look, never evidence.
 
 Bundled files (paths relative to this skill's folder, `${CLAUDE_SKILL_DIR}` in Claude Code):
-`scripts/init.js`, `scripts/build.js`, `scripts/verify.js`, `scripts/verify-ci.sh`, `scripts/ui-audit.js`,
-`references/*.md`. Always run scripts through their interpreter: `node <skill-dir>/scripts/build.js ...`.
+`scripts/init.js`, `scripts/show.js`, `scripts/merge.js`, `scripts/build.js`, `scripts/verify.js`, `scripts/verify-ci.sh`,
+`scripts/ui-audit.js`, `references/*.md`. Always run scripts through their interpreter: `node <skill-dir>/scripts/build.js ...`.
 
 ## Phase 0: Agree the scope (ask, do not assume)
 
@@ -26,8 +26,14 @@ Ask the user, in one message:
    chat. See `references/context-sources.md`. Default: repos and their docs only.
 4. Where the map folder should live (a docs repo, or a folder next to the clones) and its title.
 
-Then `node <skill-dir>/scripts/init.js <map-dir> --title "<title>" --repos <clones-dir>`.
-Make sure every repo has `origin/HEAD` (`git -C <repo> remote set-head origin -a`). Fetch only if the user agrees.
+Then `node <skill-dir>/scripts/init.js <map-dir> --title "<title>" --repos <clones-dir>`. Always pass `--repos`:
+it records where the clones are (`reposDir` in `map.json`), and every later command depends on it.
+Check each repo with `git -C <repo> rev-parse --verify origin/HEAD`; only if that fails, run
+`git -C <repo> remote set-head origin -a` (it contacts the remote). Fetch only if the user agrees.
+
+**Commands:** read code with `git -C <repo> show origin/HEAD:<path>` and `git -C <repo> grep -n -E '<p>' origin/HEAD -- <glob>`.
+One simple command per call: no `cd`, no shell variables or `$(...)`, no long `&&` chains. Agent permission
+systems block or prompt for commands they cannot vet, which stalls unattended runs.
 
 ## Phase 1: Discover (hints only)
 
@@ -39,13 +45,18 @@ contracts, clients, messaging, datastores, deployment, CI. Add allowed hint sour
 ## Phase 2: Draft claims with evidence
 
 Split by repo group or domain and use parallel research agents with `references/research-brief.md` (or do it
-yourself in slices). Merge into `components.json`, `connections.json`, `flows.json`, `facts.json`.
+yourself in slices). Have each write a fragment file, then combine them with
+`node <skill-dir>/scripts/merge.js <map-dir> <fragment.json>...` (it reports id conflicts to resolve by hand).
+To read a file with line numbers for exact quotes: `node <skill-dir>/scripts/show.js <repo-dir> <path> [from] [to]`.
 Every item has evidence; payloads use real field names. Run `node <skill-dir>/scripts/build.js <map-dir> --pin`
 early to catch format errors.
 
 ## Phase 3: Chain of Verification (do not skip)
 
-Follow `references/cove-brief.md`:
+Follow `references/cove-brief.md`. **Run every research, answering and review agent in the foreground and wait for
+its result before moving on.** Several can run in parallel in one turn, but do not end your turn while any is still
+running: in non-interactive runs (`claude -p`, CI) background agents are stopped soon after your last turn, and
+their work is lost.
 1. Write neutral questions for every claim.
 2. Answer them with **fresh agents that have not seen the draft**, from code only. If you cannot spawn agents,
    run the answering pass in a new session that has not seen the draft.
@@ -58,8 +69,9 @@ Follow `references/cove-brief.md`:
 node <skill-dir>/scripts/build.js <map-dir> --pin --verify     # must end "N/N references OK"
 ```
 Fix every failure the verifier lists: re-read the code and update the claim, not just the line number.
-If Playwright is available, run `scripts/ui-audit.js` (see the comment at its top) until `problems` and
-`consoleErrors` are empty.
+Run the UI audit until `problems` and `consoleErrors` are empty: with the Playwright MCP, or with
+`node <skill-dir>/scripts/run-ui-audit.mjs <map-dir>` after `npm i -D playwright && npx playwright install chromium`
+in your working folder. If neither is possible, say so in the hand-over; do not skip it silently.
 
 ## Phase 5: Hand over
 

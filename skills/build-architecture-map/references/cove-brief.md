@@ -18,7 +18,9 @@ CoVe separates **writing** claims from **checking** them, so the checker cannot 
 | Orders stores orders in PostgreSQL | Is the orders DB PostgreSQL? | Where does the Orders service persist orders, and what kind of store is it? |
 | Step 3 response has `status` and `orderId` | Does the response contain status and orderId? | What are the field names of the response body returned by `POST /orders`? |
 
-Ask about direction, protocol, endpoint or topic, and payload shape separately when they matter. Group questions
+Write each question from the item's **topic** (the component and the aspect: who it calls, what it stores, what a
+message contains), not by rewording the claim's sentence, which leaks the answer. Ask about direction, protocol,
+endpoint or topic, and payload shape separately when they matter. Group questions
 by repo so one agent can answer a batch efficiently (about 10 to 25 questions per agent).
 
 ## Brief for an answering agent
@@ -32,8 +34,8 @@ Answer each question below **only from the code** on each repository's default b
 earlier analysis, and that is deliberate: do not guess what someone else concluded.
 
 - Repos are cloned under: <reposDir>. Read with git only, never the working tree:
-  `head=$(git -C <repo> rev-parse --abbrev-ref origin/HEAD)`, `git -C <repo> grep -n -E '<p>' "$head" -- <glob>`,
-  `git -C <repo> show "$head:<path>"`. Never checkout, reset, pull or edit.
+  `git -C <repo> grep -n -E '<p>' origin/HEAD -- <glob>`, `git -C <repo> show origin/HEAD:<path>`.
+  One simple command per call (no `cd`, no shell variables). Never checkout, reset, pull or edit.
 - For each question give: the answer in one or two sentences; one to three evidence items as
   `repo:path:line` plus an exact quote from that line; and a confidence: `confirmed` (the code shows it
   directly), `partial` (some of it shown, say what is missing) or `not found` (say what you searched).

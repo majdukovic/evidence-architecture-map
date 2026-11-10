@@ -9,8 +9,8 @@ You are writing the architecture overview of <system> that <audience> will treat
 beats coverage: a statement that you cannot point at in code does not go in.
 
 **Sources.** Code in these repos, read only through git on each default branch, never the working tree:
-<repos and where they are cloned>. Use `git -C <repo> rev-parse --abbrev-ref origin/HEAD` to find the branch,
-then `git grep -n` and `git show <branch>:<path>`. Do not checkout, pull, edit or commit anything. You may also
+<repos and where they are cloned>. Read with `git -C <repo> grep -n -E '<pattern>' origin/HEAD -- <glob>` and
+`git -C <repo> show origin/HEAD:<path>`. Do not checkout, pull, edit or commit anything. You may also
 read <docs, wikis, tickets, dashboards, chat, earlier agent sessions the user allows>, but only as hints for where
 to look: never state something because a document, ticket, chat or earlier session says it.
 

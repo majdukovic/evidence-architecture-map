@@ -8,13 +8,17 @@ cannot be tied to a line of code on the default branch, it is left out (and note
 - Read the **default branch as the remote has it**, with git, never the working tree, which may be on a
   feature branch with local changes:
   ```bash
-  git -C <repo> fetch -q origin                                   # once, if allowed
-  head=$(git -C <repo> rev-parse --abbrev-ref origin/HEAD)        # e.g. origin/main
-  git -C <repo> grep -n -E '<pattern>' "$head" -- '<path glob>'   # search
-  git -C <repo> show "$head:<path>" | sed -n '30,60p'             # read
-  git -C <repo> ls-tree -r --name-only "$head" | grep -E '...'    # list files
+  git -C <repo> grep -n -E '<pattern>' origin/HEAD -- '<path glob>'   # search
+  git -C <repo> show origin/HEAD:<path>                               # read
+  git -C <repo> ls-tree -r --name-only origin/HEAD                    # list files
   ```
-  If `origin/HEAD` is missing: `git -C <repo> remote set-head origin -a`.
+  `origin/HEAD` is itself a revision, so no variable is needed. Check it exists with
+  `git -C <repo> rev-parse --verify origin/HEAD`; only if that fails, run `git -C <repo> remote set-head origin -a`
+  (this contacts the remote).
+- If `git show` is blocked in your environment, `node <skill-dir>/scripts/show.js <repo-dir> <path> [from] [to]` or
+  `git -C <repo> grep -n '' origin/HEAD -- <path>` print the same file with line numbers.
+- Keep each shell command simple: one `git -C <repo> ...` per call, no `cd`, no shell variables or `$(...)`.
+  Agent permission systems often cannot vet compound commands and will block or prompt for them.
 - Never `checkout`, `reset`, `stash`, `pull` or edit anything in the user's repos.
 - Line numbers in refs are line numbers in `git show <head>:<path>`, not in the working tree.
 
@@ -31,7 +35,9 @@ cannot be tied to a line of code on the default branch, it is left out (and note
 | A test covers a flow | The test function that calls the flow's endpoint, with no skip/ignore marker | The test file name |
 | A fact about ways of working | CI config, build file, deployment manifest, CODEOWNERS, lint config | A Confluence page, a chat message |
 
-When the two ends of a connection live in different repos, cite both. When a name is built at runtime
+When the two ends of a connection live in different repos or projects, cite both. Events matched by type name (an
+event bus that routes on the class name) need the publish call and the handler subscription for that same name; when
+several projects declare a class with the same name, cite the declaration each side uses. When a name is built at runtime
 (string concatenation, config lookups), cite the line that sets the value **and** the line that uses it.
 
 ## Hints are not evidence
@@ -60,6 +66,9 @@ memory files, chat transcripts) tell you **where to look**. They never prove any
   rejects credential-looking quotes and files that usually hold secrets (`.env`, `*.pem`, `credentials`,
   `secrets.yaml`...), and the verifier fails a reference whose nearby lines look like a credential.
 - Never cite production secret stores, even to prove a component exists.
+- When the line you need sits near a credential (a shared config file with a password in one profile), cite another
+  line that proves the same thing: the code that reads the setting, another part of the file at least three lines
+  away, or a deployment manifest. Leave the claim out if nothing else proves it.
 - Never copy text from private chats, tickets or customer data into the map.
 - If you find a committed secret while reading, do not repeat it; tell the user which file holds it so they can
   rotate it.

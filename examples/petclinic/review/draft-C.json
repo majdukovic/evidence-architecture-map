@@ -1,0 +1,153 @@
+{
+"components": [
+{"id":"vets-service","label":"Vets service","short":"Veterinarian list","layer":"services","repo":"spring-petclinic-microservices",
+ "purpose":"Serves the list of veterinarians and their specialties from its own database. Registers with Eureka and reads its settings from the config server.",
+ "callout":"Only one endpoint: <code>GET /vets</code>, cached in a cache named <code>vets</code> when the <code>production</code> profile is active.",
+ "exposes":["GET /vets"],"stores":["vets-db (HSQLDB in memory by default; MySQL via profile)"],
+ "evidence":[
+  {"ref":"spring-petclinic-microservices:spring-petclinic-vets-service/src/main/java/org/springframework/samples/petclinic/vets/web/VetResource.java:34","quote":"@RequestMapping(\"/vets\")"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-vets-service/src/main/java/org/springframework/samples/petclinic/vets/web/VetResource.java:45","quote":"@Cacheable(\"vets\")"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-vets-service/src/main/java/org/springframework/samples/petclinic/vets/VetsServiceApplication.java:27","quote":"@EnableDiscoveryClient"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-vets-service/src/main/resources/application.yml:3","quote":"name: vets-service"}],
+ "tests":[
+  {"kind":"test","name":"VetResourceTest.shouldGetAListOfVets","note":"MVC slice test of GET /vets with a mocked repository (checks status 200 and $[0].id)","ref":"spring-petclinic-microservices:spring-petclinic-vets-service/src/test/java/org/springframework/samples/petclinic/vets/web/VetResourceTest.java:56","quote":"get(\"/vets\")"}]},
+
+{"id":"vets-db","label":"Vets database","short":"vets, specialties","layer":"data","repo":"spring-petclinic-microservices",
+ "purpose":"Relational store for vets, specialties and the link table between them. By default an embedded HSQLDB initialised from schema.sql and data.sql; a MySQL profile exists in the shared config.",
+ "callout":"docker-compose.yml starts no database container for vets-service.",
+ "stores":["tables: vets, specialties, vet_specialties"],
+ "evidence":[
+  {"ref":"spring-petclinic-microservices:spring-petclinic-vets-service/src/main/resources/db/hsqldb/schema.sql:5","quote":"CREATE TABLE vets ("},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-vets-service/src/main/resources/db/hsqldb/schema.sql:18","quote":"CREATE TABLE vet_specialties ("},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-vets-service/pom.xml:89","quote":"<artifactId>hsqldb</artifactId>"},
+  {"ref":"spring-petclinic-microservices-config:application.yml:100","quote":"jdbc:mysql://localhost:3306/petclinic"}]},
+
+{"id":"genai-service","label":"GenAI service","short":"Chatbot back end","layer":"services","repo":"spring-petclinic-microservices",
+ "purpose":"Spring AI chat back end. Receives chat text, calls the LLM with tools that can list owners, add owners, add pets (calling customers-service) and list vets (similarity search in an in-memory vector store).",
+ "callout":"Its vet answers come from a vector store preloaded from <code>vectorstore.json</code>, not from a live call to vets-service. It has no automated tests.",
+ "exposes":["POST /chatclient"],"stores":["in-memory SimpleVectorStore, loaded from vectorstore.json"],
+ "evidence":[
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:57","quote":"@PostMapping(\"/chatclient\")"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/GenAIServiceApplication.java:25","quote":"@EnableDiscoveryClient"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/resources/application.yml:5","quote":"name: genai-service"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/AIBeanConfiguration.java:21","quote":"SimpleVectorStore.builder(embeddingModel).build()"}]},
+
+{"id":"llm-provider","label":"LLM provider (OpenAI)","short":"External LLM","layer":"external","repo":"spring-petclinic-microservices",
+ "purpose":"Hosted large language model. The pom enables the OpenAI starter (chat model gpt-4o-mini, key from OPENAI_API_KEY). The Azure OpenAI starter is commented out in the pom, although Azure settings remain in application.yml.",
+ "callout":"Both OPENAI_API_KEY and AZURE_OPENAI_* are passed to the container by docker-compose.yml, but only the OpenAI starter is on the classpath.",
+ "evidence":[
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/pom.xml:27","quote":"spring-ai-starter-model-openai"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/pom.xml:28","quote":"<!-- artifactId>spring-ai-starter-model-azure-openai"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/resources/application.yml:29","quote":"model: gpt-4o-mini"}]}
+],
+"connections": [
+{"from":"api-gateway","to":"vets-service","protocol":"HTTP","what":"Gateway route: requests to /api/vet/** are sent to vets-service via the load-balanced name, with the first two path segments stripped (so /api/vet/vets becomes /vets)",
+ "evidence":[
+  {"ref":"spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:22","quote":"uri: lb://vets-service"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:24","quote":"Path=/api/vet/**"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:26","quote":"StripPrefix=2"}]},
+{"from":"browser","to":"api-gateway","protocol":"HTTP","what":"Veterinarians page loads the list from /api/vet/vets",
+ "evidence":[
+  {"ref":"spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/VetsPage.js:10","quote":"request('/api/vet/vets'"}]},
+{"from":"vets-service","to":"vets-db","protocol":"JDBC","what":"Reads all vets (with specialties) through a Spring Data JPA repository",
+ "evidence":[
+  {"ref":"spring-petclinic-microservices:spring-petclinic-vets-service/src/main/java/org/springframework/samples/petclinic/vets/model/VetRepository.java:30","quote":"interface VetRepository extends JpaRepository<Vet, Integer>"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-vets-service/src/main/java/org/springframework/samples/petclinic/vets/model/Vet.java:37","quote":"@Table(name = \"vets\")"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-vets-service/src/main/java/org/springframework/samples/petclinic/vets/web/VetResource.java:47","quote":"vetRepository.findAll()"}]},
+{"from":"browser","to":"api-gateway","protocol":"HTTP","what":"Chat box posts the user's text to /api/genai/chatclient",
+ "evidence":[
+  {"ref":"spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/components/ChatBox.js:47","quote":"request('/api/genai/chatclient', jsonRequest('POST', query)"}]},
+{"from":"api-gateway","to":"genai-service","protocol":"HTTP","what":"Gateway route: /api/genai/** goes to genai-service via the load-balanced name, prefix stripped (so /chatclient), with a circuit breaker falling back to /fallback",
+ "evidence":[
+  {"ref":"spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:40","quote":"uri: lb://genai-service"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:42","quote":"Path=/api/genai/**"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:45","quote":"CircuitBreaker=name=genaiCircuitBreaker"}]},
+{"from":"genai-service","to":"llm-provider","protocol":"HTTPS","what":"Sends the user's message to the chat model through the Spring AI ChatClient, with the tools registered",
+ "evidence":[
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:53","quote":".defaultTools(petclinicTools)"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:65","quote":".call()"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/pom.xml:27","quote":"spring-ai-starter-model-openai"}]},
+{"from":"genai-service","to":"customers-service","protocol":"HTTP","what":"Tool calls go direct to customers-service, not through the gateway: the base URI is the first Eureka instance of customers-service; calls are GET /owners, POST /owners and POST /owners/{ownerId}/pets",
+ "evidence":[
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/AIDataProvider.java:90","quote":"discoveryClient.getInstances(\"customers-service\").get(0).getUri()"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/AIDataProvider.java:45","quote":".uri(getCustomerServiceUri() + \"/owners\")"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/AIDataProvider.java:73","quote":"\"/owners/\" + ownerId + \"/pets\""},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/AIDataProvider.java:82","quote":".uri(getCustomerServiceUri() + \"/owners\")"}]},
+{"from":"genai-service","to":"vets-service","protocol":"HTTP","what":"Only when vectorstore.json is absent from the classpath: at startup fetches GET /vets via the load-balanced name vets-service to fill the vector store. Otherwise the file is loaded and no call is made.",
+ "evidence":[
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/VectorStoreController.java:66","quote":"\"http://vets-service/\""},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/VectorStoreController.java:69","quote":".uri(vetsHostname + \"vets\")"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/VectorStoreController.java:54","quote":"if (resource.exists()) {"},
+  {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/AIBeanConfiguration.java:25","quote":"@LoadBalanced"}]}
+],
+"flows": [
+{"id":"list-vets","title":"List veterinarians","tagline":"Vets page to vets database","featured":false,
+ "summary":"The Veterinarians page asks the gateway for <code>/api/vet/vets</code>; the gateway forwards <code>/vets</code> to vets-service, which reads all vets from its database (cached under <code>vets</code> in the production profile).",
+ "actors":["browser","api-gateway","vets-service","vets-db"],
+ "steps":[
+  {"from":"browser","to":"api-gateway","kind":"req","label":"Load vets page data","protocol":"HTTP","call":{"verb":"GET","target":"/api/vet/vets"},"noPayload":true,
+   "evidence":[{"ref":"spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/VetsPage.js:10","quote":"request('/api/vet/vets'"}]},
+  {"from":"api-gateway","to":"vets-service","kind":"req","label":"Route to vets-service, prefix stripped","protocol":"HTTP","call":{"verb":"GET","target":"/vets"},"noPayload":true,
+   "evidence":[{"ref":"spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:22","quote":"uri: lb://vets-service"},
+               {"ref":"spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:26","quote":"StripPrefix=2"}]},
+  {"from":"vets-service","to":"vets-db","kind":"req","label":"Read all vets with specialties","protocol":"JDBC","payloadNote":"sql",
+   "evidence":[{"ref":"spring-petclinic-microservices:spring-petclinic-vets-service/src/main/java/org/springframework/samples/petclinic/vets/web/VetResource.java:47","quote":"vetRepository.findAll()"}]},
+  {"from":"vets-service","to":"api-gateway","kind":"res","label":"JSON list of vets","protocol":"HTTP",
+   "response":[{"id":1,"firstName":"James","lastName":"Carter","specialties":[{"id":1,"name":"radiology"}],"...":"..."}],
+   "responseSchema":{"ref":"spring-petclinic-microservices:spring-petclinic-vets-service/src/main/java/org/springframework/samples/petclinic/vets/model/Vet.java:38","quote":"public class Vet {"},
+   "evidence":[{"ref":"spring-petclinic-microservices:spring-petclinic-vets-service/src/main/java/org/springframework/samples/petclinic/vets/web/VetResource.java:46","quote":"public List<Vet> showResourcesVetList()"}]},
+  {"from":"api-gateway","to":"browser","kind":"res","label":"Table of names and specialties","protocol":"HTTP","noPayload":true,
+   "evidence":[{"ref":"spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/VetsPage.js:32","quote":"{{ vet.firstName }} {{ vet.lastName }}"}]}
+ ],
+ "tests":[{"name":"VetResourceTest","why":"Checks GET /vets returns 200 with the vet id","ref":"spring-petclinic-microservices:spring-petclinic-vets-service/src/test/java/org/springframework/samples/petclinic/vets/web/VetResourceTest.java:56","quote":"get(\"/vets\")"}]},
+
+{"id":"chatbot","title":"Chat with the assistant","tagline":"Chat box to LLM and back","featured":false,
+ "summary":"The chat box posts plain text to the gateway; genai-service passes it to the LLM, which may call tools that hit customers-service.",
+ "actors":["browser","api-gateway","genai-service","llm-provider","customers-service"],
+ "steps":[
+  {"from":"browser","to":"api-gateway","kind":"req","label":"Send chat message","protocol":"HTTP","call":{"verb":"POST","target":"/api/genai/chatclient"},"request":"<user text>","payloadNote":"unknown",
+   "evidence":[{"ref":"spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/components/ChatBox.js:47","quote":"request('/api/genai/chatclient', jsonRequest('POST', query)"}]},
+  {"from":"api-gateway","to":"genai-service","kind":"req","label":"Route, prefix stripped","protocol":"HTTP","call":{"verb":"POST","target":"/chatclient"},"noPayload":true,
+   "evidence":[{"ref":"spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:40","quote":"uri: lb://genai-service"},
+               {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:57","quote":"@PostMapping(\"/chatclient\")"}]},
+  {"from":"genai-service","to":"llm-provider","kind":"req","label":"Prompt with system text and tools","protocol":"HTTPS","payloadNote":"internal",
+   "evidence":[{"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:64","quote":".user(query)"}]},
+  {"from":"genai-service","to":"customers-service","kind":"req","label":"Tool call: list owners (direct, via Eureka)","protocol":"HTTP","call":{"verb":"GET","target":"/owners"},"noPayload":true,
+   "evidence":[{"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/AIDataProvider.java:45","quote":".uri(getCustomerServiceUri() + \"/owners\")"},
+               {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicTools.java:41","quote":"petclinicAiProvider.getAllOwners()"}]},
+  {"from":"genai-service","to":"api-gateway","kind":"res","label":"Answer as a plain string (error text on failure)","protocol":"HTTP","response":"<assistant answer>","payloadNote":"unknown",
+   "evidence":[{"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:69","quote":"Chat is currently unavailable. Please try again later."}]}
+ ],
+ "tests":[]}
+],
+"facts": [
+{"group":"GenAI and vets details","items":[
+ {"text":"genai-service answers vet questions from an in-memory vector store pre-embedded in <code>vectorstore.json</code>; the live call to vets-service happens only if that file is missing.",
+  "evidence":[
+   {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/VectorStoreController.java:58","quote":"load(resource)"},
+   {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/AIDataProvider.java:66","quote":"this.vectorStore.similaritySearch(sr)"}]},
+ {"text":"Chat memory keeps context across messages (a <code>MessageChatMemoryAdvisor</code> is registered on the chat client).",
+  "evidence":[{"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:48","quote":"MessageChatMemoryAdvisor.builder(chatMemory)"}]},
+ {"text":"vets-service caches <code>GET /vets</code> in a cache named <code>vets</code>; caching is switched on only under the <code>production</code> profile. The config repo sets <code>vets.cache.ttl: 60</code> and <code>heap-size: 100</code>, bound to <code>VetsProperties</code>.",
+  "evidence":[
+   {"ref":"spring-petclinic-microservices:spring-petclinic-vets-service/src/main/java/org/springframework/samples/petclinic/vets/system/CacheConfig.java:28","quote":"@Profile(\"production\")"},
+   {"ref":"spring-petclinic-microservices:spring-petclinic-vets-service/src/main/resources/application.yml:7","quote":"cache-names: vets"},
+   {"ref":"spring-petclinic-microservices-config:vets-service.yml:3","quote":"ttl: 60"},
+   {"ref":"spring-petclinic-microservices:spring-petclinic-vets-service/src/main/java/org/springframework/samples/petclinic/vets/system/VetsProperties.java:25","quote":"@ConfigurationProperties(prefix = \"vets\")"}]},
+ {"text":"Caffeine is on the vets-service classpath as the cache library.",
+  "evidence":[{"ref":"spring-petclinic-microservices:spring-petclinic-vets-service/pom.xml:81","quote":"<artifactId>caffeine</artifactId>"}]},
+ {"text":"In the docker profile vets-service listens on 8083 and genai-service on 8084; otherwise the shared config gives services a random port.",
+  "evidence":[
+   {"ref":"spring-petclinic-microservices-config:vets-service.yml:22","quote":"port: 8083"},
+   {"ref":"spring-petclinic-microservices-config:genai-service.yml:16","quote":"port: 8084"},
+   {"ref":"spring-petclinic-microservices-config:application.yml:4","quote":"# start services on random port by default"}]},
+ {"text":"The LLM key is read from the environment (<code>OPENAI_API_KEY</code>) and docker-compose forwards it to genai-service.",
+  "evidence":[
+   {"ref":"spring-petclinic-microservices:docker-compose.yml:85","quote":"OPENAI_API_KEY=${OPENAI_API_KEY}"}]},
+ {"text":"genai-service also pulls in the Spring Cloud Gateway starter and JPA/HSQLDB in its pom, although no gateway routes or entities were found in its source.",
+  "evidence":[
+   {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/pom.xml:80","quote":"spring-cloud-starter-gateway-server-webflux"},
+   {"ref":"spring-petclinic-microservices:spring-petclinic-genai-service/pom.xml:53","quote":"spring-boot-starter-data-jpa"}]}
+]}
+]
+}

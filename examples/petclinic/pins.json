@@ -1,0 +1,15 @@
+{
+  "verifiedOn": "2026-11-10",
+  "repos": {
+    "spring-petclinic-microservices": {
+      "branch": "main",
+      "sha": "e8b747ab522721076cacb5cf688eb8a54ba8c5c9",
+      "web": "https://github.com/spring-petclinic/spring-petclinic-microservices"
+    },
+    "spring-petclinic-microservices-config": {
+      "branch": "main",
+      "sha": "323993ce2519c6d02df63e08bf4458d123d3b611",
+      "web": "https://github.com/spring-petclinic/spring-petclinic-microservices-config"
+    }
+  }
+}

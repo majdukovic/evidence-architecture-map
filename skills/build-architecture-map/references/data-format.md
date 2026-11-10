@@ -82,14 +82,18 @@ Every component, connection, flow step and fact needs at least one evidence item
 }
 ```
 
-- Layers are drawn top to bottom in the order given. Colours are optional.
+- Layers are drawn top to bottom in the order given. Colours are optional. Start from the layers `init.js` writes and
+  agree them before drafting, so every research agent uses the same ids.
 - `id`: lower-case letters, digits, dashes. Used in links (`#node.orders`).
 - `short`: 2 to 4 words under the box label. `purpose`: one or two sentences for a newcomer.
 - `exposes` / `stores`: short tags (endpoints, topics, queues, tables, buckets).
+- `condition`: for a component that exists only in some setups (an optional profile, a feature flag, a deployment
+  variant), say when, e.g. `"Only with the alloydb kustomize component"`. Drawn dashed. Also valid on connections.
 - `gateway: true` marks a router (API gateway, ingress, BFF). A flow step with no direct connection is drawn
   through it on the map.
 - `seqLabel`: shorter name for sequence diagrams.
-- `tests`: the most useful tests or test helpers for this component, each with `ref` and `quote`.
+- `tests`: the most useful tests or test helpers for this component, each with `ref` and `quote`. Optional; leave it
+  out (or `[]`) when there is no test worth linking.
 - `links`: docs, dashboards, runbooks, tickets, channels. **Not evidence**, never checked, shown under
   "Related links". Never link anything that needs a secret in the URL.
 
@@ -107,9 +111,12 @@ simple HTML (`b`, `i`, `code`, `a`, `br`, `p`, `ul`, `li`). The build rejects sc
 ```
 
 - Direction is the direction of the call or message: the caller or publisher is `from`.
-- `protocol` is short: `HTTP`, `gRPC`, `GraphQL`, `Kafka`, `RabbitMQ`, `SQS`, `JDBC`, `Redis`, `S3`, `SMTP`, `WebSocket`.
-- For a message broker, draw publisher -> broker and broker -> consumer as two connections, or publisher ->
-  consumer with `protocol: "Kafka"`. Pick one style and keep it.
+- `protocol` is short free text: `HTTP`, `HTTPS`, `gRPC`, `GraphQL`, `Kafka`, `RabbitMQ`, `SQS`, `JDBC`, `Redis`, `S3`, `SMTP`,
+  `WebSocket`, `in-process` (an embedded store or library).
+- `condition`: when the connection exists only in some setups (a profile, a flag, an optional component). Drawn dashed.
+- For a message broker, prefer publisher -> consumer with the broker as the protocol (`"protocol": "RabbitMQ"`) and the
+  event in `what`; it keeps the map readable. Add the broker as its own component (publisher -> broker -> consumer) only
+  when newcomers need to see it, for example when it does routing they must understand. Pick one style and keep it.
 
 ## flows.json
 
@@ -138,9 +145,11 @@ simple HTML (`b`, `i`, `code`, `a`, `br`, `p`, `ul`, `li`). The build rejects sc
 
 - `featured: true` flows are listed first under "Start here", in file order.
 - Every step's `from` and `to` must be in `actors`. Actors appear left to right in the order listed.
-- `kind`: `req` (a call that waits), `res` (the answer to an earlier `req`), `async` (message or fire-and-forget),
-  `self` (work inside one component).
-- `request` / `response`: JSON objects or strings. **Real field names and casing from the code**, made-up
+- `kind`: `req` (a call that waits), `res` (the answer to an earlier `req`, so it goes back to the caller), `async`
+  (message or fire-and-forget), `self` (work inside one component; set `from` and `to` to that component).
+- `request` / `response`: JSON objects or strings. **Real field names and casing from the code**; when a serialiser
+  renames fields (ASP.NET Core and many Jackson setups write camelCase), use the names on the wire and cite the
+  serialiser setting, or keep the class's names and say so in the step's description. Then: made-up
   values, at most about 10 fields, `"...": "..."` for the rest, placeholders like `<token>` for secrets.
 - `requestSchema` / `responseSchema`: evidence pointing at the class, schema, proto `message` or OpenAPI
   definition. Shown as "Full definition".

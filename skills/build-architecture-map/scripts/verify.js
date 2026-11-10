@@ -27,7 +27,7 @@ const revs = {}, files = {}, setup = [];
 function revFor(repo) {
   if (repo in revs) return revs[repo];
   const dir = L.repoDir(m, root, repo);
-  if (!fs.existsSync(dir)) { setup.push(`${repo}: not cloned at ${dir}`); return (revs[repo] = null); }
+  if (!fs.existsSync(dir)) { setup.push(`${repo}: not cloned at ${dir}; set "reposDir" in map.json (relative to the map folder) or pass --repos <dir>`); return (revs[repo] = null); }
   if (at === 'pinned') {
     const sha = (m.pins.repos[repo] || {}).sha;
     try { L.git(dir, 'cat-file', '-e', sha + '^{commit}'); return (revs[repo] = { dir, rev: sha }); }

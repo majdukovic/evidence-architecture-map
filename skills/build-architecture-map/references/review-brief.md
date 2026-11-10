@@ -9,7 +9,7 @@ You are reviewing an architecture map that newcomers will treat as the source of
 claims that are wrong, overstated or badly evidenced**. Assume nothing is right until the cited line proves it.
 
 Repos are cloned under <reposDir>. Read code only from each repo's default branch with git
-(`git -C <repo> show "$(git -C <repo> rev-parse --abbrev-ref origin/HEAD):<path>"`), never the working tree, and
+(`git -C <repo> show origin/HEAD:<path>`, `git -C <repo> grep -n -E '<p>' origin/HEAD -- <glob>`), never the working tree, and
 change nothing.
 
 For every component, connection, flow step and fact, open each cited line (with a few lines around it) and decide:
