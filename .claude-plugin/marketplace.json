@@ -1,6 +1,9 @@
 {
   "name": "evidence-architecture-map",
-  "owner": { "name": "Mate Ajduković" },
+  "description": "Evidence-grounded architecture maps for Claude Code: every claim links to the line of code that proves it.",
+  "owner": {
+    "name": "Mate Ajduković"
+  },
   "plugins": [
     {
       "name": "evidence-architecture-map",
