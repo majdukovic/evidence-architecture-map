@@ -10,6 +10,15 @@ answer neutral questions from the code), has another agent try to disprove what 
 re-checks every quote. The result is an interactive page, `architecture.html`, and an `ARCHITECTURE.md` with Mermaid
 diagrams.
 
+## Install
+
+In Claude Code:
+
+```
+/plugin marketplace add majdukovic/evidence-architecture-map
+/plugin install evidence-architecture-map@evidence-architecture-map
+```
+
 ## Skills
 
 - **build-architecture-map**: ask "Build an architecture map of the repos in ~/code/acme for new backend engineers".
