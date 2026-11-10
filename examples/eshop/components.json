@@ -29,11 +29,20 @@
       "layer": "clients",
       "repo": "eShop",
       "purpose": "The customer-facing web shop. It calls <b>Catalog</b> over HTTP, <b>Basket</b> over gRPC and <b>Ordering</b> over HTTP, signs users in against <b>Identity</b>, and listens to order-status events on RabbitMQ to refresh the order page.",
+      "callout": "Checkout calls Ordering API and then deletes the basket without looking at the order call's result, so an order request that comes back with an error status still empties the basket.",
       "exposes": [
         "Web UI",
         "GET /product-images/{id} (forwarded to Catalog)"
       ],
       "evidence": [
+        {
+          "ref": "eShop:src/WebApp/Services/BasketState.cs:108",
+          "quote": "await DeleteBasketAsync();"
+        },
+        {
+          "ref": "eShop:src/WebApp/Services/OrderingService.cs:17",
+          "quote": "return httpClient.SendAsync(requestMessage);"
+        },
         {
           "ref": "eShop:src/eShop.AppHost/AppHost.cs:71",
           "quote": "AddDotnetProject(\"webapp\", \"../WebApp\""
@@ -50,7 +59,7 @@
       "short": "Reverse proxy",
       "layer": "clients",
       "repo": "eShop",
-      "purpose": "A YARP reverse proxy declared in the AppHost. It forwards catalog, ordering and identity routes to the matching services. There is no Basket route on it.",
+      "purpose": "A YARP reverse proxy declared in the AppHost. It forwards catalog, ordering and identity routes to the matching services. There is no Basket route on it. In the repo, its callers are the <b>ClientApp</b> (MAUI) and <b>HybridApp</b> mobile apps.",
       "gateway": true,
       "exposes": [
         "/api/catalog/*",
@@ -81,9 +90,14 @@
       "repo": "eShop",
       "purpose": "A sample web app that registers webhook subscriptions with <b>Webhooks API</b> and receives the callbacks on its own endpoint.",
       "exposes": [
-        "POST /webhook-received"
+        "POST /webhook-received",
+        "OPTIONS /check"
       ],
       "evidence": [
+        {
+          "ref": "eShop:src/WebhookClient/Endpoints/WebhookEndpoints.cs:16",
+          "quote": "app.MapMethods(\"/check\", [HttpMethods.Options]"
+        },
         {
           "ref": "eShop:src/eShop.AppHost/AppHost.cs:67",
           "quote": "AddDotnetProject(\"webhooksclient\", \"../WebhookClient\""
@@ -91,6 +105,51 @@
         {
           "ref": "eShop:src/WebhookClient/Endpoints/WebhookEndpoints.cs:31",
           "quote": "app.MapPost(\"/webhook-received\""
+        }
+      ]
+    },
+    {
+      "id": "clientapp",
+      "label": "ClientApp (MAUI)",
+      "short": "Mobile shopping app",
+      "layer": "clients",
+      "repo": "eShop",
+      "purpose": "A .NET MAUI mobile app. It reads the catalogue and places and lists orders through the <b>Mobile BFF</b>, and talks to <b>Basket API</b> directly over gRPC. The gateway addresses are settings the user can change. It starts on mock services by default; the real calls happen once mocks are switched off in its settings.",
+      "callout": "The Mobile BFF has no Basket route, so this app calls Basket API itself (default address port 5221, Basket API's own launch port).",
+      "evidence": [
+        {
+          "ref": "eShop:src/ClientApp/MauiProgram.cs:28",
+          "quote": ".UseMauiApp<App>()"
+        },
+        {
+          "ref": "eShop:eShop.slnx:21",
+          "quote": "<Project Path=\"src/ClientApp/ClientApp.csproj\" />"
+        },
+        {
+          "ref": "eShop:src/ClientApp/Services/Settings/SettingsService.cs:25",
+          "quote": "private readonly bool UseMocksDefault = true;"
+        },
+        {
+          "ref": "eShop:src/ClientApp/MauiProgram.cs:112",
+          "quote": "aes.UpdateDependencies(settingsService.UseMocks);"
+        }
+      ]
+    },
+    {
+      "id": "hybridapp",
+      "label": "HybridApp (MAUI Blazor)",
+      "short": "Mobile catalogue app",
+      "layer": "clients",
+      "repo": "eShop",
+      "purpose": "A .NET MAUI Blazor Hybrid app that browses the catalogue through the <b>Mobile BFF</b>. It has no basket or order code.",
+      "evidence": [
+        {
+          "ref": "eShop:src/HybridApp/MauiProgram.cs:14",
+          "quote": "var builder = MauiApp.CreateBuilder();"
+        },
+        {
+          "ref": "eShop:eShop.slnx:20",
+          "quote": "<Project Path=\"src/HybridApp/HybridApp.csproj\" />"
         }
       ]
     },
@@ -154,10 +213,15 @@
       "layer": "services",
       "repo": "eShop",
       "purpose": "Serves the product list, brands, types and pictures over a versioned HTTP API, and owns stock levels. It answers stock checks and reduces stock when an order is paid, using order events.",
+      "callout": "The write endpoints (POST and PUT /api/catalog/items, DELETE /api/catalog/items/{id}) are mapped without any authorization requirement, and Catalog API has no authentication set-up at all, unlike Ordering and Webhooks.",
       "exposes": [
         "GET /api/catalog/items",
         "GET /api/catalog/items/by?ids=",
         "GET /api/catalog/items/{id}/pic",
+        "POST /api/catalog/items",
+        "PUT /api/catalog/items (v1)",
+        "PUT /api/catalog/items/{id} (v2)",
+        "DELETE /api/catalog/items/{id}",
         "Event: ProductPriceChangedIntegrationEvent"
       ],
       "stores": [
@@ -171,6 +235,26 @@
         {
           "ref": "eShop:src/Catalog.API/Apis/CatalogApi.cs:17",
           "quote": "vApi.MapGroup(\"api/catalog\")"
+        },
+        {
+          "ref": "eShop:src/Catalog.API/Apis/CatalogApi.cs:110",
+          "quote": "api.MapPost(\"/items\", CreateItem)"
+        },
+        {
+          "ref": "eShop:src/Catalog.API/Apis/CatalogApi.cs:114",
+          "quote": "api.MapDelete(\"/items/{id:int}\", DeleteItemById)"
+        },
+        {
+          "ref": "eShop:src/Ordering.API/Program.cs:22",
+          "quote": ".RequireAuthorization();"
+        },
+        {
+          "ref": "eShop:src/Catalog.API/Apis/CatalogApi.cs:100",
+          "quote": "v1.MapPut(\"/items\", UpdateItemV1)"
+        },
+        {
+          "ref": "eShop:src/Catalog.API/Apis/CatalogApi.cs:105",
+          "quote": "v2.MapPut(\"/items/{id:int}\", UpdateItem)"
         }
       ]
     },
@@ -209,7 +293,7 @@
       "layer": "services",
       "repo": "eShop",
       "purpose": "Stores webhook subscriptions and POSTs a message to each subscriber's destination URL when an order is paid or shipped. It also subscribes to price-change events, but that handler does nothing yet.",
-      "callout": "Price-change webhooks are not implemented: the ProductPriceChanged handler just returns.",
+      "callout": "Price-change webhooks are not implemented: the ProductPriceChanged handler just returns. Registering a subscription first makes an OPTIONS request to the subscriber's check URL; the subscription is saved only if the reply has a success status and echoes the same <code>X-eshop-whtoken</code> header, and the check URL has the same scheme, host and port as the destination URL.",
       "exposes": [
         "POST /api/webhooks",
         "GET /api/webhooks"
@@ -229,6 +313,22 @@
         {
           "ref": "eShop:src/Webhooks.API/IntegrationEvents/ProductPriceChangedIntegrationEventHandler.cs:7",
           "quote": "return Task.CompletedTask;"
+        },
+        {
+          "ref": "eShop:src/Webhooks.API/Services/GrantUrlTesterService.cs:14",
+          "quote": "new HttpRequestMessage(HttpMethod.Options, url)"
+        },
+        {
+          "ref": "eShop:src/Webhooks.API/Apis/WebHooksApi.cs:41",
+          "quote": "await grantUrlTester.TestGrantUrl("
+        },
+        {
+          "ref": "eShop:src/Webhooks.API/Services/GrantUrlTesterService.cs:27",
+          "quote": "return response.IsSuccessStatusCode && tokenReceived == tokenExpected;"
+        },
+        {
+          "ref": "eShop:src/Webhooks.API/Services/GrantUrlTesterService.cs:42",
+          "quote": "return firstUrl.Scheme == secondUrl.Scheme &&"
         }
       ]
     },
@@ -279,10 +379,19 @@
       "layer": "infra",
       "repo": "eShop",
       "purpose": "The message broker. All integration events go through one direct exchange, with the event's class name as the routing key.",
+      "callout": "Events can be lost. A consumer acknowledges every message even when its handler threw, and there is no dead-letter set-up. On the publishing side, an outbox event whose publish failed is marked failed and is not read again.",
       "exposes": [
         "Exchange: eshop_event_bus (direct)"
       ],
       "evidence": [
+        {
+          "ref": "eShop:src/EventBusRabbitMQ/RabbitMQEventBus.cs:177",
+          "quote": "// Even on exception we take the message off the queue."
+        },
+        {
+          "ref": "eShop:src/EventBusRabbitMQ/RabbitMQEventBus.cs:180",
+          "quote": "await _consumerChannel.BasicAckAsync(eventArgs.DeliveryTag"
+        },
         {
           "ref": "eShop:src/eShop.AppHost/AppHost.cs:10",
           "quote": "builder.AddRabbitMQ(\"eventbus\")"

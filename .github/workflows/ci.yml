@@ -35,7 +35,7 @@ jobs:
         run: bash tools/evidence-architecture-map/skills/build-architecture-map/scripts/verify-ci.sh "$MAP_DIR"
       - name: Check the other examples the same way
         run: |
-          for m in examples/eshop examples/petclinic; do
+          for m in examples/eshop examples/petclinic examples/bootzooka; do
             bash tools/evidence-architecture-map/skills/build-architecture-map/scripts/verify-ci.sh "$m" ".archmap-repos/$(basename $m)"
           done
   ui-audit:
@@ -47,4 +47,4 @@ jobs:
       - name: Install Playwright
         run: npm i --no-save playwright@1.60.0 && npx playwright install --with-deps chromium
       - name: Click through every component and flow step of each example
-        run: for m in examples/online-boutique examples/eshop examples/petclinic; do node skills/build-architecture-map/scripts/run-ui-audit.mjs "$m"; done
+        run: for m in examples/online-boutique examples/eshop examples/petclinic examples/bootzooka; do node skills/build-architecture-map/scripts/run-ui-audit.mjs "$m"; done

@@ -37,8 +37,20 @@ cannot be tied to a line of code on the default branch, it is left out (and note
 
 When the two ends of a connection live in different repos or projects, cite both. Events matched by type name (an
 event bus that routes on the class name) need the publish call and the handler subscription for that same name; when
-several projects declare a class with the same name, cite the declaration each side uses. When a name is built at runtime
+several projects declare a class with the same name, cite the declaration each side uses. When a value holds only by default (a port, URL or flag from a default setting or a client's fallback), say "by
+default" and cite the default; never present it as fixed. When a name is built at runtime
 (string concatenation, config lookups), cite the line that sets the value **and** the line that uses it.
+
+## Claims that rest on a library
+
+Some behaviour lives in a framework, not in the project: a gateway's default timeout, a client's retry policy, how an
+admin server discovers services. The project's code proves only that the library is used and configured.
+
+- State what the project's code shows: the dependency, the configuration it sets, and that nothing overrides it.
+- If the claim needs the library's behaviour, clone the library at the version the build file pins, add it as a repo
+  in `map.json`, and cite its source like any other evidence.
+- Otherwise leave that part out and record it in `review/dropped.md`. Do not write "probably" or "by default (not
+  checked)" on the map.
 
 ## Hints are not evidence
 
@@ -63,8 +75,9 @@ memory files, chat transcripts) tell you **where to look**. They never prove any
 ## Never
 
 - Never quote or link a credential, token, password, private key, webhook URL or personal data. The build
-  rejects credential-looking quotes and files that usually hold secrets (`.env`, `*.pem`, `credentials`,
-  `secrets.yaml`...), and the verifier fails a reference whose nearby lines look like a credential.
+  rejects credential-looking quotes and files that hold keys or credentials (`*.pem`, `*.key`, keystores,
+  `credentials`, `secrets.yaml`...), and the verifier fails a reference when the cited or quoted line is within two
+  lines of a literal credential. `.env` files are judged by their content like any other file.
 - Never cite production secret stores, even to prove a component exists.
 - When the line you need sits near a credential (a shared config file with a password in one profile), cite another
   line that proves the same thing: the code that reads the setting, another part of the file at least three lines

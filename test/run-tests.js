@@ -96,7 +96,8 @@ const bad = (mut, name, re) => {
   check(name, x.status === 1 && re.test(x.stderr), x.stdout + x.stderr);
 };
 bad(c => { c.components[0].purpose = 'Hi <img src=x onerror=alert(1)>'; }, 'build rejects script in HTML fields', /simple formatting/);
-bad(c => { c.components[0].evidence.push(E('orders:.env:1', 'DB_PASSWORD=hunter2hunter2')); }, 'build rejects secret files and credential quotes', /never cite files that usually hold secrets/);
+bad(c => { c.components[0].evidence.push(E('orders:certs/server.pem:1', 'BEGIN CERTIFICATE')); }, 'build rejects files that usually hold secrets', /never cite files that usually hold secrets/);
+bad(c => { c.components[0].evidence.push(E('orders:.env:1', 'DB_PASSWORD=hunter2hunter2')); }, 'build rejects a quote that looks like a credential', /the quote looks like a credential/);
 bad(c => { c.components[1].evidence = []; }, 'build rejects a component with no evidence', /payments: no evidence/);
 bad(c => { c.components[1].layer = 'nope'; }, 'build rejects an unknown layer', /unknown layer/);
 write('components.json', comps);
@@ -113,6 +114,40 @@ sh(orders2, 'git', 'push', '-q', path.join(tmp, 'remote', 'orders.git'), 'main')
 sh(orders2, 'git', 'fetch', '-q', path.join(tmp, 'remote', 'orders.git'), 'main:refs/remotes/origin/main');
 r = node(path.join(SCRIPTS, 'verify.js'), map);
 check('verify fails a reference next to a credential', /application.conf:2  the cited lines look like they hold a credential/.test(r.stdout), r.stdout);
+
+/* loophole: citing a harmless line while quoting the line next to a credential, and drift allowance right after --pin */
+const facts0 = fs.readFileSync(path.join(map, 'facts.json'), 'utf8');
+write('facts.json', [{ group: 'Config', items: [
+  { text: 'Orders reads the payments URL from config.', evidence: [E('orders:src/main/resources/application.conf:1', 'jdbc:postgresql://db/orders')] }] }]);
+r = node(path.join(SCRIPTS, 'verify.js'), map);
+check('verify fails a quote taken from a line next to a credential',
+  /application.conf:1  the cited lines look like they hold a credential/.test(r.stdout), r.stdout);
+fs.mkdirSync(path.join(orders2, 'conf'), { recursive: true });
+fs.writeFileSync(path.join(orders2, 'conf/db.conf'), 'name = "orders"\nmode = "prod"\nurl = "jdbc:postgresql://db/orders"\npassword = "s3cretValue99"\n', { flag: 'w' });
+sh(orders2, 'git', 'add', 'conf/db.conf');
+sh(orders2, 'git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'db conf');
+sh(orders2, 'git', 'push', '-q', path.join(tmp, 'remote', 'orders.git'), 'main');
+sh(orders2, 'git', 'fetch', '-q', path.join(tmp, 'remote', 'orders.git'), 'main:refs/remotes/origin/main');
+write('facts.json', [{ group: 'Config', items: [
+  { text: 'Orders uses PostgreSQL.', evidence: [E('orders:conf/db.conf:1', 'jdbc:postgresql://db/orders')] }] }]);
+r = node(path.join(SCRIPTS, 'verify.js'), map);
+check('verify fails a clean cited line whose quote sits next to a credential', /db.conf:1  the cited lines look like they hold a credential/.test(r.stdout), r.stdout);
+write('facts.json', [{ group: 'Routes', items: [
+  { text: 'Payments exposes charges.', evidence: [E('orders:src/main/scala/OrdersRoutes.scala:4', 'path("orders")')] }] }]);
+r = node(path.join(SCRIPTS, 'verify.js'), map, '--exact');
+check('verify --exact fails a quote two lines from the cited line', r.status === 1 && /OrdersRoutes.scala:4  quote is on line 5, not the cited line/.test(r.stdout), r.stdout);
+r = node(path.join(SCRIPTS, 'verify.js'), map);
+check('without --exact the same quote is only a note', /note fact "Routes" #1: orders:src\/main\/scala\/OrdersRoutes.scala:4  quote is on line 5/.test(r.stdout), r.stdout);
+fs.writeFileSync(path.join(map, 'facts.json'), facts0);
+
+/* the credential check: real literals are caught, types, placeholders and field names are not */
+const L = require(path.join(SCRIPTS, 'lib.js'));
+const credCases = [['case class Login_IN(login: String, password: String)', false], ['  password: Option[String] = None', false], ['password: string;', false],
+  ['password = ${?DB_PASSWORD}', false], ['val hash = passwordHasher.hash(password)', false], ['password: changeme', false], ['VITE_API_URL=http://localhost:8080', false],
+  ['      password: petclinic', true], ['db.password = "s3cretValue99"', true], ['PASSWORD=hunter2hunter2', true], ['"apiKey": "abcd1234efgh"', true]];
+const wrongCred = credCases.filter(([t, want]) => L.looksSecret(t) !== want).map(([t]) => t);
+check('credential check flags literal values but not types, placeholders or field names', !wrongCred.length, wrongCred.join(' | '));
+check('.env files are judged by content, key files are refused by name', !L.SECRET_FILE.test('ui/.env.docker') && L.SECRET_FILE.test('certs/a.pem'));
 
 /* show.js prints numbered lines from origin/HEAD, not the working tree */
 fs.writeFileSync(path.join(orders2, 'src/main/scala/OrdersRoutes.scala'), 'uncommitted change\n');

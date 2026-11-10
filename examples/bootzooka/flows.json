@@ -1,0 +1,729 @@
+[
+  {
+    "id": "register-login",
+    "title": "Register and log in",
+    "tagline": "How the UI calls the backend and keeps the session",
+    "featured": true,
+    "summary": "Registration and login both return an <b>API key</b>: the id of a row in <code>api_keys</code>. The UI stores it in <code>localStorage</code> and sends it as an <code>Authorization: Bearer</code> header on later calls.",
+    "actors": [
+      "ui",
+      "http-api",
+      "user",
+      "security",
+      "email-service",
+      "db"
+    ],
+    "steps": [
+      {
+        "from": "ui",
+        "to": "http-api",
+        "kind": "req",
+        "label": "Submit the registration form",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "POST",
+          "target": "/api/v1/user/register"
+        },
+        "request": {
+          "login": "john",
+          "email": "john@example.com",
+          "password": "<password>"
+        },
+        "response": {
+          "apiKey": "<api-key-id>"
+        },
+        "requestSchema": {
+          "ref": "bootzooka:ui/src/api/apiSchemas.ts:60",
+          "quote": "export type RegisterIN = {"
+        },
+        "responseSchema": {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:26",
+          "quote": "Register_OUT(apiKey.id.toString)"
+        },
+        "description": "The page's generated hook <code>usePostUserRegister</code> posts the whole form object. The form also holds <code>repeatedPassword</code>, which the backend's <code>Register_IN</code> does not declare; the example shows the backend's three fields. The <code>/api/v1</code> prefix is the server's context path.",
+        "evidence": [
+          {
+            "ref": "bootzooka:ui/src/pages/Register/index.tsx:59",
+            "quote": "usePostUserRegister({"
+          },
+          {
+            "ref": "bootzooka:ui/src/api/apiComponents.ts:41",
+            "quote": "url: \"/user/register\""
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala:61",
+            "quote": "se.prependSecurityIn(apiContextPath.foldLeft"
+          },
+          {
+            "ref": "bootzooka:ui/src/pages/Register/index.tsx:92",
+            "quote": "mutate({ body: data })"
+          }
+        ]
+      },
+      {
+        "from": "http-api",
+        "to": "user",
+        "kind": "req",
+        "label": "Dispatch to the register handler",
+        "protocol": "in-process",
+        "noPayload": true,
+        "description": "The handler runs the service inside a database transaction.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:23",
+            "quote": "registerUserEndpoint.handle { data =>"
+          }
+        ]
+      },
+      {
+        "from": "user",
+        "to": "db",
+        "kind": "req",
+        "label": "Insert the user and a new API key",
+        "protocol": "in-process",
+        "payloadNote": "sql",
+        "description": "After validating input and checking that login and e-mail are free, the password is hashed (Argon2) and the user row is inserted, then an API key row valid for the configured default duration.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala:47",
+            "quote": "userModel.insert(user)"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala:49",
+            "quote": "apiKeyService.create(user.id, config.defaultApiKeyValid)"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserModel.scala:63",
+            "quote": "Argon2Function.getInstance("
+          }
+        ]
+      },
+      {
+        "from": "user",
+        "to": "email-service",
+        "kind": "async",
+        "label": "Schedule the welcome e-mail",
+        "protocol": "in-process",
+        "payloadNote": "internal",
+        "description": "Only a row in the outbox table; sending happens later in the background loop.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala:48",
+            "quote": "emailScheduler.schedule(EmailData(emailClean, confirmationEmail))"
+          }
+        ]
+      },
+      {
+        "from": "http-api",
+        "to": "ui",
+        "kind": "res",
+        "label": "Return the API key",
+        "protocol": "HTTP",
+        "response": {
+          "apiKey": "<api-key-id>"
+        },
+        "responseSchema": {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:26",
+          "quote": "Register_OUT(apiKey.id.toString)"
+        },
+        "description": "The key returned is the id of the new row.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:26",
+            "quote": "Register_OUT(apiKey.id.toString)"
+          }
+        ]
+      },
+      {
+        "from": "ui",
+        "to": "ui",
+        "kind": "self",
+        "label": "Keep the key in localStorage",
+        "protocol": "browser",
+        "payloadNote": "internal",
+        "description": "On success the page saves the key under the <code>apiKey</code> storage key with a local-storage hook.",
+        "evidence": [
+          {
+            "ref": "bootzooka:ui/src/pages/Register/index.tsx:61",
+            "quote": "setApiKeyState({ apiKey });"
+          },
+          {
+            "ref": "bootzooka:ui/src/hooks/auth.ts:12",
+            "quote": "useLocalStorage<ApiKeyState | null>(STORAGE_API_KEY)"
+          },
+          {
+            "ref": "bootzooka:ui/src/consts.ts:1",
+            "quote": "STORAGE_API_KEY = 'apiKey'"
+          }
+        ]
+      },
+      {
+        "from": "ui",
+        "to": "http-api",
+        "kind": "req",
+        "label": "Log in (an existing user)",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "POST",
+          "target": "/api/v1/user/login"
+        },
+        "request": {
+          "loginOrEmail": "john",
+          "password": "<password>",
+          "apiKeyValidHours": 24
+        },
+        "response": {
+          "apiKey": "<api-key-id>"
+        },
+        "responseSchema": {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:32",
+          "quote": "Login_OUT(apiKey.id.toString)"
+        },
+        "description": "<code>apiKeyValidHours</code> is optional; when it is absent the configured default validity is used. The login form does not send it.",
+        "evidence": [
+          {
+            "ref": "bootzooka:ui/src/api/apiComponents.ts:85",
+            "quote": "url: \"/user/login\""
+          },
+          {
+            "ref": "bootzooka:ui/src/pages/Login/index.tsx:102",
+            "quote": "mutateAsync({ body: data })"
+          }
+        ]
+      },
+      {
+        "from": "user",
+        "to": "db",
+        "kind": "req",
+        "label": "Find user, verify password, create API key",
+        "protocol": "in-process",
+        "payloadNote": "sql",
+        "description": "A wrong login or password is reported with the same message either way.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserModel.scala:26",
+            "quote": "def findByLoginOrEmail(loginOrEmail: LowerCased)"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala:64",
+            "quote": "verifyPassword(user, password, validationErrorMsg = IncorrectLoginOrPassword)"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala:65",
+            "quote": "apiKeyService.create(user.id,"
+          }
+        ]
+      },
+      {
+        "from": "ui",
+        "to": "http-api",
+        "kind": "req",
+        "label": "Fetch the current user with the stored key",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "GET",
+          "target": "/api/v1/user"
+        },
+        "request": {
+          "Authorization": "Bearer <api-key-id>"
+        },
+        "response": {
+          "login": "john",
+          "email": "john@example.com",
+          "createdOn": "2026-01-01T10:00:00Z"
+        },
+        "responseSchema": {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:115",
+          "quote": "case class GetUser_OUT("
+        },
+        "description": "The caller sets the Authorization header from the stored key; the shared fetcher would also add it from local storage if a caller did not. The backend reads the key from the Bearer header.",
+        "evidence": [
+          {
+            "ref": "bootzooka:ui/src/api/apiFetcher.ts:55",
+            "quote": "Bearer ${state.apiKey}"
+          },
+          {
+            "ref": "bootzooka:ui/src/api/apiComponents.ts:225",
+            "quote": "url: \"/user\""
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/http/Http.scala:58",
+            "quote": "baseEndpoint.securityIn(auth.bearer[String]()"
+          },
+          {
+            "ref": "bootzooka:ui/src/hooks/auth.ts:19",
+            "quote": "headers: { Authorization: `Bearer ${apiKeyState?.apiKey}` }"
+          }
+        ]
+      },
+      {
+        "from": "user",
+        "to": "security",
+        "kind": "req",
+        "label": "Authenticate the Bearer token",
+        "protocol": "in-process",
+        "payloadNote": "internal",
+        "description": "Secured endpoints run the auth check before the handler.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:35",
+            "quote": "e.handleSecurity(authData => auth(authData))"
+          }
+        ]
+      },
+      {
+        "from": "security",
+        "to": "db",
+        "kind": "req",
+        "label": "Look up the key and check expiry",
+        "protocol": "in-process",
+        "payloadNote": "sql",
+        "description": "An unknown key gets a random delay and 401; an expired key is deleted and rejected; a valid API key is kept (multi-use).",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/security/Auth.scala:25",
+            "quote": "db.transact(authTokenOps.findById(id))"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/security/Auth.scala:31",
+            "quote": "case Some(token) if expired(token) =>"
+          }
+        ]
+      }
+    ],
+    "tests": [
+      {
+        "name": "UserApiTest",
+        "why": "Registers and logs in a user through the HTTP API",
+        "ref": "bootzooka:backend/src/test/scala/com/softwaremill/bootzooka/user/UserApiTest.scala:15",
+        "quote": "\"/user/register\" should \"register\" in {"
+      }
+    ]
+  },
+  {
+    "id": "reset-password",
+    "title": "Reset a forgotten password",
+    "tagline": "Code in the DB, e-mail via the outbox",
+    "featured": true,
+    "summary": "The forgot endpoint always answers success. When the user exists it stores a one-time code and puts an e-mail in an outbox table; a background loop sends it. A second backend endpoint exchanges the code for a new password.",
+    "actors": [
+      "ui",
+      "http-api",
+      "password-reset",
+      "db",
+      "email-service",
+      "email-sender",
+      "mailgun"
+    ],
+    "steps": [
+      {
+        "from": "ui",
+        "to": "http-api",
+        "kind": "req",
+        "label": "Ask for a reset e-mail",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "POST",
+          "target": "/api/v1/passwordreset/forgot"
+        },
+        "request": {
+          "loginOrEmail": "john"
+        },
+        "response": {},
+        "requestSchema": {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetApi.scala:46",
+          "quote": "case class ForgotPassword_IN("
+        },
+        "description": "Sent by the Recover Password page.",
+        "evidence": [
+          {
+            "ref": "bootzooka:ui/src/pages/RecoverLostPassword/index.tsx:42",
+            "quote": "usePostPasswordresetForgot({"
+          },
+          {
+            "ref": "bootzooka:ui/src/api/apiComponents.ts:412",
+            "quote": "url: \"/passwordreset/forgot\""
+          }
+        ]
+      },
+      {
+        "from": "http-api",
+        "to": "password-reset",
+        "kind": "req",
+        "label": "Dispatch to the forgot handler",
+        "protocol": "in-process",
+        "noPayload": true,
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetApi.scala:19",
+            "quote": "db.transact(passwordResetService.forgotPassword("
+          }
+        ]
+      },
+      {
+        "from": "password-reset",
+        "to": "db",
+        "kind": "req",
+        "label": "Find the user and insert a reset code",
+        "protocol": "in-process",
+        "payloadNote": "sql",
+        "description": "If no user matches, nothing is stored and nothing is sent; the HTTP answer is the same.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetService.scala:27",
+            "quote": "userModel.findByLoginOrEmail(loginOrEmail.toLowerCased)"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetService.scala:38",
+            "quote": "passwordResetCodeModel.insert(passwordResetCode)"
+          }
+        ]
+      },
+      {
+        "from": "password-reset",
+        "to": "email-service",
+        "kind": "async",
+        "label": "Schedule the reset e-mail",
+        "protocol": "in-process",
+        "payloadNote": "internal",
+        "description": "The link is built from the configured <code>reset-link-pattern</code> and the code id; the e-mail body comes from the <code>resetPassword</code> template.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetService.scala:46",
+            "quote": "String.format(config.resetLinkPattern, code.id)"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetService.scala:43",
+            "quote": "emailScheduler.schedule(EmailData(user.emailLowerCase"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailTemplates.scala:8",
+            "quote": "EmailTemplateRenderer(\"resetPassword\""
+          }
+        ]
+      },
+      {
+        "from": "http-api",
+        "to": "ui",
+        "kind": "res",
+        "label": "Answer with an empty success",
+        "protocol": "HTTP",
+        "response": {},
+        "description": "The response is the same whether or not the user exists.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetApi.scala:20",
+            "quote": "ForgotPassword_OUT()"
+          }
+        ]
+      },
+      {
+        "from": "email-service",
+        "to": "db",
+        "kind": "req",
+        "label": "Background loop reads a batch of outbox rows",
+        "protocol": "in-process",
+        "payloadNote": "sql",
+        "description": "Runs every <code>email-send-interval</code> (default 1 second) with <code>batch-size</code> rows (default 10).",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala:52",
+            "quote": "sleep(config.emailSendInterval)"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala:30",
+            "quote": "db.transact(emailModel.find(config.batchSize))"
+          }
+        ]
+      },
+      {
+        "from": "email-service",
+        "to": "email-sender",
+        "kind": "req",
+        "label": "Send each e-mail",
+        "protocol": "in-process",
+        "payloadNote": "class-fields",
+        "requestSchema": {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailModel.scala:26",
+          "quote": "case class EmailData("
+        },
+        "description": "Recipient, subject and content. The sender is Mailgun, SMTP or the dummy logger depending on configuration.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala:32",
+            "quote": "emails.map(_.data).foreach(emailSender.apply)"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/EmailSender.scala:10",
+            "quote": "def create(sttpBackend: SyncBackend, config: EmailConfig)"
+          }
+        ]
+      },
+      {
+        "from": "email-sender",
+        "to": "mailgun",
+        "kind": "req",
+        "label": "POST the message to Mailgun (if enabled)",
+        "protocol": "HTTPS",
+        "call": {
+          "verb": "POST",
+          "target": "<email.mailgun.url>"
+        },
+        "request": {
+          "from": "Bootzooka <bootzooka@<mailgun-domain>>",
+          "to": "john@example.com",
+          "subject": "<subject>",
+          "html": "<content>"
+        },
+        "description": "Sent as a form body. With SMTP enabled the message goes to the SMTP server; with neither, it is only logged.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/MailgunEmailSender.scala:15",
+            "quote": ".post(uri\"${config.url}\")"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/MailgunEmailSender.scala:20",
+            "quote": "\"to\" -> email.recipient"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/MailgunEmailSender.scala:22",
+            "quote": "\"html\" -> email.content"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/MailgunEmailSender.scala:19",
+            "quote": "config.senderDisplayName} <${config.senderName}@${config.domain}>"
+          }
+        ]
+      },
+      {
+        "from": "email-service",
+        "to": "db",
+        "kind": "req",
+        "label": "Delete the sent rows",
+        "protocol": "in-process",
+        "payloadNote": "sql",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala:33",
+            "quote": "db.transact(emailModel.delete(emails.map(_.id)))"
+          }
+        ]
+      },
+      {
+        "from": "http-api",
+        "to": "password-reset",
+        "kind": "req",
+        "label": "Receive the code and the new password",
+        "protocol": "in-process",
+        "call": {
+          "verb": "POST",
+          "target": "/api/v1/passwordreset/reset"
+        },
+        "request": {
+          "code": "<code-from-email>",
+          "password": "<new-password>"
+        },
+        "response": {},
+        "description": "The backend endpoint that completes a reset. This map cites no UI page that calls it; only the generated client has a hook for it.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetApi.scala:30",
+            "quote": ".in(PasswordResetPath / \"reset\")"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetApi.scala:14",
+            "quote": "passwordResetEndpoint.handle { data =>"
+          },
+          {
+            "ref": "bootzooka:ui/src/api/apiComponents.ts:368",
+            "quote": "url: \"/passwordreset/reset\""
+          }
+        ]
+      },
+      {
+        "from": "password-reset",
+        "to": "db",
+        "kind": "req",
+        "label": "Consume the code and store the new password hash",
+        "protocol": "in-process",
+        "payloadNote": "sql",
+        "description": "The code is looked up, checked for expiry and deleted when valid (one-time); an unknown or expired code gives an unauthorized error. Then the new Argon2 hash is written.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetService.scala:50",
+            "quote": "auth(code.asId[PasswordResetCode]).ok()"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetService.scala:52",
+            "quote": "userModel.updatePassword(userId, User.hashPassword(newPassword))"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetCodeModel.scala:29",
+            "quote": "override def deleteWhenValid: Boolean = true"
+          }
+        ]
+      }
+    ],
+    "tests": [
+      {
+        "name": "PasswordResetApiTest",
+        "why": "Requests a reset, reads the code from the sent e-mail, resets, and logs in",
+        "ref": "bootzooka:backend/src/test/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetApiTest.scala:10",
+        "quote": "\"/passwordreset\" should \"reset the password\" in {"
+      }
+    ]
+  },
+  {
+    "id": "backend-startup",
+    "title": "Backend start-up",
+    "tagline": "Config, migrations, background loops, HTTP server",
+    "featured": true,
+    "summary": "<code>Main</code> builds everything through <code>Dependencies.create</code>: it reads configuration, creates the connection pool and migrates the database (retrying until the database is reachable). <code>Main</code> then starts the e-mail loops and the HTTP server.",
+    "actors": [
+      "main",
+      "config",
+      "db",
+      "postgres",
+      "email-service",
+      "http-api"
+    ],
+    "steps": [
+      {
+        "from": "main",
+        "to": "config",
+        "kind": "req",
+        "label": "Read and log configuration",
+        "protocol": "in-process",
+        "payloadNote": "class-fields",
+        "requestSchema": {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/config/Config.scala:15",
+          "quote": "case class Config(db: DBConfig, api: HttpConfig"
+        },
+        "description": "Typed config from <code>application.conf</code>; environment variables override most keys.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:39",
+            "quote": "Config.read.tap(Config.log)"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/config/Config.scala:40",
+            "quote": "ConfigSource.default.loadOrThrow[Config]"
+          }
+        ]
+      },
+      {
+        "from": "main",
+        "to": "db",
+        "kind": "req",
+        "label": "Create the pool and migrate",
+        "protocol": "in-process",
+        "noPayload": true,
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:44",
+            "quote": "DB.createTestMigrate(config.db)"
+          }
+        ]
+      },
+      {
+        "from": "db",
+        "to": "postgres",
+        "kind": "req",
+        "label": "Run Flyway migrations if enabled",
+        "protocol": "JDBC",
+        "payloadNote": "sql",
+        "description": "<code>migrate-on-start</code> defaults to true and can be set with <code>MIGRATE_ON_START</code>. The only migration in the repo is V1, which creates all four tables.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/infrastructure/DB.scala:58",
+            "quote": "if config.migrateOnStart then flyway.migrate().discard"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/resources/application.conf:27",
+            "quote": "migrate-on-start = true"
+          }
+        ]
+      },
+      {
+        "from": "db",
+        "to": "postgres",
+        "kind": "req",
+        "label": "Test the connection, retry every 5 seconds",
+        "protocol": "JDBC",
+        "payloadNote": "sql",
+        "description": "If migration or the test query fails, the code waits and tries again, so the backend can start before the database is up.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/infrastructure/DB.scala:70",
+            "quote": "sleep(5.seconds)"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/infrastructure/DB.scala:59",
+            "quote": "sql\"SELECT 1\".query[Int].run()"
+          }
+        ]
+      },
+      {
+        "from": "main",
+        "to": "main",
+        "kind": "self",
+        "label": "Wire the object graph",
+        "protocol": "in-process",
+        "payloadNote": "internal",
+        "description": "MacWire's <code>autowire</code> builds services, APIs and the HTTP server from the config, the DB and the chosen e-mail sender.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:51",
+            "quote": "autowire[Dependencies]("
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:58",
+            "quote": "EmailSender.create,"
+          }
+        ]
+      },
+      {
+        "from": "main",
+        "to": "email-service",
+        "kind": "async",
+        "label": "Start the e-mail background loops",
+        "protocol": "in-process",
+        "payloadNote": "internal",
+        "description": "One loop sends batches, another updates the queue-size gauge; each catches and logs exceptions and keeps going.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Main.scala:26",
+            "quote": "deps.emailService.startProcesses()"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala:43",
+            "quote": "foreverPeriodically(\"Exception when counting emails\")"
+          }
+        ]
+      },
+      {
+        "from": "main",
+        "to": "http-api",
+        "kind": "req",
+        "label": "Start the HTTP server and block",
+        "protocol": "in-process",
+        "payloadNote": "internal",
+        "description": "Binds to the configured host and port (default 0.0.0.0:8080; <code>PORT</code>, <code>API_PORT</code>, <code>API_HOST</code> override), then the main thread waits forever.",
+        "evidence": [
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Main.scala:27",
+            "quote": "deps.httpApi.start().discard"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala:77",
+            "quote": "NettyConfig.default.host(config.host).port(config.port)"
+          },
+          {
+            "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Main.scala:30",
+            "quote": "blocking until the application is shut down"
+          }
+        ]
+      }
+    ]
+  }
+]

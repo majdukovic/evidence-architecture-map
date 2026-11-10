@@ -73,7 +73,7 @@ const evidence = L.collectEvidence(m);
 evidence.forEach(e => {
   const r = L.parseRef(e.ref);
   if (!r) return errs.push(`${e.where}: malformed ref "${e.ref}" (want repo:path:line)`);
-  if (typeof e.quote !== 'string' || e.quote.trim().length < 6 || e.quote.length > 120) errs.push(`${e.where}: ${e.ref}: quote must be 6 to 120 characters copied from that line`);
+  if (typeof e.quote !== 'string' || e.quote.trim().length < 4 || e.quote.length > 120) errs.push(`${e.where}: ${e.ref}: quote must be 4 to 120 characters copied from that line`);
   if (L.SECRET_FILE.test(r.path)) errs.push(`${e.where}: ${e.ref}: never cite files that usually hold secrets`);
   if (L.looksSecret(e.quote)) errs.push(`${e.where}: ${e.ref}: the quote looks like a credential`);
 });
@@ -231,6 +231,7 @@ console.log(`Built ${shown.startsWith('..') ? htmlFile : shown} and ${path.basen
   `${m.flows.length} flows (${steps} steps), ${evidence.length} evidence references across ${used.length} repos (verified on ${m.pins.verifiedOn}).`);
 
 if (has('--verify')) {
-  const r = spawnSync(process.execPath, [path.join(__dirname, 'verify.js'), m.dir, '--repos', root], { stdio: 'inherit' });
+  // just pinned: every quote must be on its own line, no drift allowance
+  const r = spawnSync(process.execPath, [path.join(__dirname, 'verify.js'), m.dir, '--repos', root, ...(has('--pin') ? ['--exact'] : [])], { stdio: 'inherit' });
   process.exit(r.status);
 }

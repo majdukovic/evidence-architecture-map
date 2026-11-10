@@ -1,0 +1,322 @@
+{
+  "layers": [
+    {
+      "id": "people",
+      "label": "People and client apps"
+    },
+    {
+      "id": "entry",
+      "label": "Entry points"
+    },
+    {
+      "id": "services",
+      "label": "Services"
+    },
+    {
+      "id": "data",
+      "label": "Data stores and messaging"
+    },
+    {
+      "id": "external",
+      "label": "Third-party systems"
+    }
+  ],
+  "components": [
+    {
+      "id": "ui",
+      "label": "Web UI (React)",
+      "short": "Browser SPA",
+      "layer": "people",
+      "repo": "bootzooka",
+      "purpose": "Single-page React app in <code>ui/</code>. It calls the backend JSON API through a client generated from the OpenAPI description and keeps the API key in the browser's local storage.",
+      "exposes": [
+        "/",
+        "/login",
+        "/register",
+        "/recover-lost-password",
+        "/main",
+        "/profile",
+        "/* (not found page)"
+      ],
+      "stores": [
+        "localStorage: apiKey"
+      ],
+      "evidence": [
+        {
+          "ref": "bootzooka:ui/src/App.tsx:26",
+          "quote": "<Route path=\"/login\" element={<Login />} />"
+        },
+        {
+          "ref": "bootzooka:ui/src/api/apiFetcher.ts:79",
+          "quote": "window.fetch("
+        },
+        {
+          "ref": "bootzooka:ui/src/App.tsx:23",
+          "quote": "<Route path=\"/\" element={<Welcome />} />"
+        },
+        {
+          "ref": "bootzooka:ui/src/App.tsx:35",
+          "quote": "<Route path=\"/main\" element={<SecretMain />} />"
+        }
+      ]
+    },
+    {
+      "id": "http-api",
+      "label": "HTTP server",
+      "short": "Netty + Tapir",
+      "layer": "entry",
+      "repo": "bootzooka",
+      "purpose": "Netty server that exposes the Tapir endpoints under <code>/api/v1</code>, Swagger UI under <code>/api/v1/docs</code>, and everything else as static frontend files from the classpath <code>webapp</code> folder (falling back to <code>index.html</code>).",
+      "exposes": [
+        "/api/v1/*",
+        "/api/v1/docs",
+        "/ (static webapp)",
+        "GET /api/v1/admin/version"
+      ],
+      "evidence": [
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala:77",
+          "quote": "NettySyncServer(serverOptions"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala:40",
+          "quote": "List(\"api\", \"v1\")"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/http/HttpApi.scala:70",
+          "quote": "FilesOptions.default[Identity].defaultFile(List(\"index.html\"))"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/admin/VersionApi.scala:28",
+          "quote": ".in(AdminPath / \"version\")"
+        }
+      ]
+    },
+    {
+      "id": "user",
+      "label": "User module",
+      "short": "Register, login, profile",
+      "layer": "services",
+      "repo": "bootzooka",
+      "purpose": "Endpoints and logic for registering, logging in, logging out, reading and changing the user profile and password. Login and registration both end by creating an API key.",
+      "exposes": [
+        "POST /user/register",
+        "POST /user/login",
+        "POST /user/logout",
+        "GET /user",
+        "POST /user",
+        "POST /user/changepassword"
+      ],
+      "stores": [
+        "PostgreSQL: users"
+      ],
+      "evidence": [
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:63",
+          "quote": "val registerUserEndpoint = baseEndpoint.post"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:69",
+          "quote": "val loginEndpoint = baseEndpoint.post"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserModel.scala:45",
+          "quote": "@Table(PostgresDbType, SqlNameMapper.CamelToSnakeCase)"
+        }
+      ]
+    },
+    {
+      "id": "security",
+      "label": "Security (API keys)",
+      "short": "Bearer API keys",
+      "layer": "services",
+      "repo": "bootzooka",
+      "purpose": "Authenticates a request by looking its token up in the database and checking its expiry. The same <code>Auth</code> class serves API keys (multi-use, kept) and password reset codes (one-time, deleted when used).",
+      "stores": [
+        "PostgreSQL: api_keys"
+      ],
+      "evidence": [
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/security/Auth.scala:24",
+          "quote": "def apply(id: Id[T]): Either[Fail.Unauthorized, Id[User]]"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/security/ApiKeyModel.scala:31",
+          "quote": "override def deleteWhenValid: Boolean = false"
+        }
+      ]
+    },
+    {
+      "id": "password-reset",
+      "label": "Password reset module",
+      "short": "Forgot / reset",
+      "layer": "services",
+      "repo": "bootzooka",
+      "purpose": "Creates a one-time reset code for a user and schedules an e-mail carrying a link with it; a second endpoint exchanges a valid code and a new password for a password change.",
+      "exposes": [
+        "POST /passwordreset/forgot",
+        "POST /passwordreset/reset"
+      ],
+      "stores": [
+        "PostgreSQL: password_reset_codes"
+      ],
+      "evidence": [
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetApi.scala:34",
+          "quote": "val forgotPasswordEndpoint = baseEndpoint.post"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetApi.scala:29",
+          "quote": "val passwordResetEndpoint = baseEndpoint.post"
+        }
+      ]
+    },
+    {
+      "id": "email-service",
+      "label": "E-mail outbox",
+      "short": "Scheduler + sender loop",
+      "layer": "services",
+      "repo": "bootzooka",
+      "purpose": "Other modules only insert an e-mail row; a background loop started at startup sends rows in batches and then deletes them. A second loop reports the queue size as a metric.",
+      "stores": [
+        "PostgreSQL: scheduled_emails"
+      ],
+      "evidence": [
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala:27",
+          "quote": "emailModel.insert(Email(id, data))"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala:39",
+          "quote": "foreverPeriodically(\"Exception when sending emails\")"
+        }
+      ]
+    },
+    {
+      "id": "email-sender",
+      "label": "E-mail sender",
+      "short": "Mailgun, SMTP or dummy",
+      "layer": "services",
+      "repo": "bootzooka",
+      "purpose": "Strategy chosen at startup from configuration: Mailgun if enabled, otherwise SMTP if enabled, otherwise a dummy sender that only logs and keeps the message in memory.",
+      "evidence": [
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/EmailSender.scala:10",
+          "quote": "def create(sttpBackend: SyncBackend, config: EmailConfig)"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/DummyEmailSender.scala:16",
+          "quote": "Would send email, if this wasn't a dummy email service implementation"
+        }
+      ]
+    },
+    {
+      "id": "db",
+      "label": "DB access and migrations",
+      "short": "Hikari, Magnum, Flyway",
+      "layer": "services",
+      "repo": "bootzooka",
+      "purpose": "Wraps the connection pool, runs every model call in a transaction, and runs Flyway migrations at startup when enabled.",
+      "evidence": [
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/infrastructure/DB.scala:41",
+          "quote": "def createTestMigrate(config: DBConfig): DB ="
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/infrastructure/DB.scala:24",
+          "quote": "def transactEither[E, T]"
+        }
+      ]
+    },
+    {
+      "id": "config",
+      "label": "Configuration",
+      "short": "application.conf + env",
+      "layer": "services",
+      "repo": "bootzooka",
+      "purpose": "A typed <code>Config</code> read with pureconfig from <code>application.conf</code>; most keys can be overridden with environment variables.",
+      "evidence": [
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/config/Config.scala:40",
+          "quote": "ConfigSource.default.loadOrThrow[Config]"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/resources/application.conf:6",
+          "quote": "port = ${?API_PORT}"
+        }
+      ]
+    },
+    {
+      "id": "main",
+      "label": "Startup (Main)",
+      "short": "Main + Dependencies",
+      "layer": "services",
+      "repo": "bootzooka",
+      "purpose": "Entry point of the backend. Builds the object graph with MacWire, starts the e-mail loops and the HTTP server, then blocks forever.",
+      "evidence": [
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Main.scala:24",
+          "quote": "val deps = Dependencies.create"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:51",
+          "quote": "autowire[Dependencies]("
+        }
+      ]
+    },
+    {
+      "id": "postgres",
+      "label": "PostgreSQL",
+      "short": "Main database",
+      "layer": "data",
+      "repo": "bootzooka",
+      "purpose": "Holds users, API keys, password reset codes and the scheduled e-mail outbox. The schema is created by one Flyway migration.",
+      "stores": [
+        "users",
+        "api_keys",
+        "password_reset_codes",
+        "scheduled_emails"
+      ],
+      "evidence": [
+        {
+          "ref": "bootzooka:backend/src/main/resources/application.conf:24",
+          "quote": "jdbc:postgresql://"
+        },
+        {
+          "ref": "bootzooka:backend/src/main/resources/db/migration/V1__create_schema.sql:43",
+          "quote": "CREATE TABLE \"scheduled_emails\""
+        }
+      ]
+    },
+    {
+      "id": "mailgun",
+      "label": "Mailgun",
+      "short": "E-mail API",
+      "layer": "external",
+      "repo": "bootzooka",
+      "purpose": "Third-party e-mail API, used only when the Mailgun sender is enabled in configuration.",
+      "condition": "Only when email.mailgun.enabled is true",
+      "evidence": [
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/MailgunEmailSender.scala:15",
+          "quote": ".post(uri\"${config.url}\")"
+        }
+      ]
+    },
+    {
+      "id": "smtp-server",
+      "label": "SMTP server",
+      "short": "Mail relay",
+      "layer": "external",
+      "repo": "bootzooka",
+      "purpose": "A mail server reached with the JavaMail transport, used only when the SMTP sender is enabled in configuration.",
+      "condition": "Only when email.smtp.enabled is true and Mailgun is not enabled",
+      "evidence": [
+        {
+          "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/SmtpEmailSender.scala:99",
+          "quote": "transport.sendMessage(m, m.getAllRecipients)"
+        }
+      ]
+    }
+  ]
+}

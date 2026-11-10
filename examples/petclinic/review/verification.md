@@ -48,3 +48,19 @@ Two fresh reviewers (components+connections; flows+facts) using review-brief.md.
 | service-startup steps 9-10 | Eureka lookup is a background registry fetch, not a request/response | Response step removed; step relabelled "Fetch the registry" |
 
 Final `build.js --pin --verify`: 316/316 references OK.
+
+## Update 2026-11-10: five reviewer hints
+
+Each hint was treated as a hint and checked against origin/HEAD. A fresh agent with `references/review-brief.md` reviewed all new and changed items from code alone (12 findings; all applied or answered below).
+
+| Hint | Check | Result |
+|---|---|---|
+| 1 Owner and pet create/edit flow | Read `OwnerFormPage.js`, `PetFormPage.js`, `router.js`, `OwnerResource.java`, `PetResource.java`, `OwnerRequest`, `PetRequest`, `PetDetails`, `Owner`, `Pet`, gateway route lines 33-38 | Added flows `owner-create-edit` and `pet-create-edit` |
+| 2 10-second breaker timeout | `ApiGatewayApplication.java:86-88` (only `configureDefault`, `timeoutDuration(10s)`); search for `timeout`, `TimeLimiter`, `resilience4j` over both repos found no other main-code or config setting (test code has a registry); `ApiGatewayController.java:60-61`; `FallbackController.java:15` | Confirmed, with corrections: browser timeout is 15 s (`client.js:1`) and `ChatBox.js:52-57` shows its own message, so the fallback text never reaches the screen. Added as fact, callout and flow step text. That the default applies to every breaker id and that a timeout triggers the fallback is library behaviour, not read; wording says "default" and "the only time limit configured" |
+| 3 mysql shared DB, no MySQL in compose | Search for `datasource`, `jdbc` over both repos: one datasource URL, config repo `application.yml:100`; four poms ship the driver; compose file read whole: 11 services, none a database; `mysql` does not occur in docker-compose.yml | Confirmed. Line 100 is two lines from a credential, so the ref is `application.yml:98` with the quote on line 100 (the verifier allows a quote up to two lines away; line 98 is four lines from the credential). The compose absence is stated as an enumeration of all 11 service lines |
+| 4 Admin server discovery | Read `SpringBootAdminApplication`, admin pom (`spring-boot-admin-starter-server`, Eureka client), both admin `application.yml` files, `admin-server.yml`; search for `admin-client` finds no client dependency in any pom | Dropped, see dropped.md |
+| 5 Shared chat memory | `PetclinicChatClient.java:31-66`; search for `conversation`, `advisors(` finds nothing beyond `defaultAdvisors` | Partly confirmed (nothing sets a conversation id; endpoint takes only the text). "Shared by all users" needs the Spring AI default id, not readable here: dropped as a claim, kept as a labelled unchecked note |
+
+Reviewer corrections applied: URL ref line (kept, reason above); genai-service also ships the MySQL driver (list widened); compose absence cited as full service list; `PetDetails.birthDate` example changed to the Jackson placeholder (`@DateTimeFormat` does not set JSON format); missing gateway-to-customers hop added for the edit-pet load, and a note that browser-side responses of pre-loads are omitted; Retry wording tied to config (`retries: 1`, `SERVICE_UNAVAILABLE`, POST) and "unchanged" removed; the 400 for a future birth date now cites `PetResourceTest.java:94`; 10 s wording narrowed; chat step says the UI shows its own message and cites route lines 42, 44, 14 and `ChatBox.js:56`; the two fallback URIs (`forward:/fallback`, `/fallback`) stated separately, their combination marked not read; chat-memory fact cites `.user(query)` and the 10-message comment.
+
+Mechanical check after corrections: `build.js --verify` 452/452 references OK.

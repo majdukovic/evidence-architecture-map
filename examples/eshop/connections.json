@@ -62,11 +62,35 @@
       { "ref": "eShop:src/WebhookClient/Services/WebHooksClient.cs:7", "quote": "client.PostAsJsonAsync(\"/api/webhooks\", payload)" },
       { "ref": "eShop:src/Webhooks.API/Apis/WebHooksApi.cs:35", "quote": "api.MapPost(\"/\"" }
     ] },
-  { "from": "webhooks-api", "to": "webhooks-client", "protocol": "HTTP", "what": "POSTs the event to the destination URL a subscriber registered; the sample client receives it on /webhook-received",
+  { "from": "webhooks-api", "to": "webhooks-client", "protocol": "HTTP", "what": "Registration handshake: sends OPTIONS with an X-eshop-whtoken header to the subscriber's check URL and saves the subscription only on a success reply whose X-eshop-whtoken header matches the token sent (a blank token needs no echo) (the sample client answers on /check). Later POSTs the event to the destination URL a subscriber registered; the sample client receives it on /webhook-received",
     "evidence": [
+      { "ref": "eShop:src/Webhooks.API/Services/GrantUrlTesterService.cs:14", "quote": "new HttpRequestMessage(HttpMethod.Options, url)" },
+      { "ref": "eShop:src/Webhooks.API/Services/GrantUrlTesterService.cs:27", "quote": "response.IsSuccessStatusCode && tokenReceived == tokenExpected" },
+      { "ref": "eShop:src/Webhooks.API/Apis/WebHooksApi.cs:43", "quote": "if (grantOk)" },
+      { "ref": "eShop:src/WebhookClient/Endpoints/WebhookEndpoints.cs:16", "quote": "app.MapMethods(\"/check\", [HttpMethods.Options]" },
       { "ref": "eShop:src/Webhooks.API/Services/WebhooksSender.cs:17", "quote": "RequestUri = new Uri(subs.DestUrl, UriKind.Absolute)" },
       { "ref": "eShop:src/Webhooks.API/Services/WebhooksSender.cs:18", "quote": "Method = HttpMethod.Post" },
       { "ref": "eShop:src/WebhookClient/Endpoints/WebhookEndpoints.cs:31", "quote": "app.MapPost(\"/webhook-received\"" }
+    ] },
+  { "from": "clientapp", "to": "mobile-bff", "protocol": "HTTP", "what": "Reads the catalogue and creates and lists orders (api/catalog and api/orders with an api-version query parameter). The endpoints are settings that default to port 11632, the port HybridApp names as its Mobile BFF host; the AppHost does not fix the BFF's port.",
+    "evidence": [
+      { "ref": "eShop:src/ClientApp/ViewModels/SettingsViewModel.cs:58", "quote": "$\"http://{_baseAddress}:11632\"" },
+      { "ref": "eShop:src/ClientApp/Services/Catalog/CatalogService.cs:38", "quote": "$\"{ApiUrlBase}/items?PageSize=100&{ApiVersion}\"" },
+      { "ref": "eShop:src/ClientApp/Services/Order/OrderService.cs:37", "quote": "UriHelper.CombineUri(_settingsService.GatewayOrdersEndpointBase, ApiUrlBase)" },
+      { "ref": "eShop:src/eShop.AppHost/Extensions.cs:146", "quote": "yarp.AddRoute(\"/api/orders/{*any}\"" }
+    ] },
+  { "from": "hybridapp", "to": "mobile-bff", "protocol": "HTTP", "what": "Reads catalogue items, brands, types and pictures (api/catalog with api-version=2.0)",
+    "evidence": [
+      { "ref": "eShop:src/HybridApp/MauiProgram.cs:9", "quote": "internal static string MobileBffHost" },
+      { "ref": "eShop:src/HybridApp/MauiProgram.cs:30", "quote": "AddHttpClient<CatalogService>(o => o.BaseAddress = new(MobileBffHost))" },
+      { "ref": "eShop:src/eShop.AppHost/Extensions.cs:142", "quote": "yarp.AddRoute(\"/api/catalog/{*any}\", catalogCluster)" }
+    ] },
+  { "from": "clientapp", "to": "basket-api", "protocol": "gRPC", "what": "Reads, updates and deletes the signed-in user's basket, bypassing the Mobile BFF",
+    "evidence": [
+      { "ref": "eShop:src/ClientApp/Services/Basket/BasketService.cs:125", "quote": "GrpcChannel.ForAddress(_settingsService.GatewayBasketEndpointBase)" },
+      { "ref": "eShop:src/ClientApp/ViewModels/SettingsViewModel.cs:63", "quote": "$\"http://{_baseAddress}:5221\"" },
+      { "ref": "eShop:src/Basket.API/Properties/launchSettings.json:6", "quote": "\"applicationUrl\": \"http://localhost:5221\"" },
+      { "ref": "eShop:src/Basket.API/Program.cs:12", "quote": "app.MapGrpcService<BasketService>();" }
     ] },
 
   { "from": "basket-api", "to": "redis", "protocol": "Redis", "what": "Stores each basket as a JSON string under /basket/{userId}",

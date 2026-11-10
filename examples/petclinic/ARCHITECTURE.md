@@ -96,6 +96,8 @@ The Vue single-page app is downloaded from the **API gateway** and runs in the b
 
 Spring Cloud Gateway app that serves the Vue UI as static files, forwards `/api/vet`, `/api/visit`, `/api/customer` and `/api/genai` to the matching service, and aggregates owner and visit data in its own controller at `/api/gateway/owners/{ownerId}`.
 
+> The gateway's circuit breakers use one default configuration with a **10-second** time limit, and no other time limit is configured. A slow chat answer from the LLM ends in the `/fallback` 503 (the chat box then shows its own "unavailable" message), and a slow visits call on the owner page quietly returns an empty visits list, with no error shown.
+
 - **Repo:** [spring-petclinic-microservices](https://github.com/spring-petclinic/spring-petclinic-microservices/tree/e8b747ab522721076cacb5cf688eb8a54ba8c5c9)
 - **Exposes:** `GET /api/gateway/owners/{ownerId}`, `/api/customer/**`, `/api/visit/**`, `/api/vet/**`, `/api/genai/**`, `GET/POST /fallback`
 - **Calls / sends to:** Customers service (HTTP), Visits service (HTTP), Config Server (HTTP), Discovery Server (Eureka) (HTTP (Eureka)), Tracing Server (Zipkin) (HTTP (Zipkin)), Vets service (HTTP), GenAI service (HTTP)
@@ -107,6 +109,11 @@ Spring Cloud Gateway app that serves the Vue UI as static files, forwards `/api/
   - [spring-petclinic-microservices › application.yml:3](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L3) `name: api-gateway`
   - [spring-petclinic-microservices › ApiGatewayApplication.java:66](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java#L66) `new ClassPathResource("static/index.html")`
   - [spring-petclinic-microservices › ApiGatewayApplication.java:77](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java#L77) `RouterFunctions.route(htmlNavigation,`
+  - [spring-petclinic-microservices › ApiGatewayApplication.java:88](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java#L88) `timeoutDuration(Duration.ofSeconds(10))`
+  - [spring-petclinic-microservices › ApiGatewayApplication.java:86](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java#L86) `factory.configureDefault(id -> new Resilience4JConfigBuilder(id)`
+  - [spring-petclinic-microservices › ApiGatewayController.java:61](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/ApiGatewayController.java#L61) `cb.run(it, throwable -> emptyVisitsForPets())`
+  - [spring-petclinic-microservices › FallbackController.java:15](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/FallbackController.java#L15) `HttpStatus.SC_SERVICE_UNAVAILABLE`
+  - [spring-petclinic-microservices › ChatBox.js:56](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/components/ChatBox.js#L56) `content: 'Chat is currently unavailable'`
 - **Tests and test helpers:**
   - `ApiGatewayControllerTest` [spring-petclinic-microservices › ApiGatewayControllerTest.java:39](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/test/java/org/springframework/samples/petclinic/api/boundary/web/ApiGatewayControllerTest.java#L39) `getOwnerDetails_withAvailableVisitsService`
   - `VisitsServiceClientIntegrationTest` [spring-petclinic-microservices › VisitsServiceClientIntegrationTest.java:39](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/test/java/org/springframework/samples/petclinic/api/application/VisitsServiceClientIntegrationTest.java#L39) `getVisitsForPets_withAvailableVisitsService`
@@ -175,7 +182,7 @@ Serves the list of veterinarians and their specialties from its own database. Re
 
 Spring AI chat back end. Receives chat text, calls the LLM with tools that can list owners, add owners, add pets (calling customers-service) and list vets (similarity search in an in-memory vector store).
 
-> Its vet answers come from a vector store preloaded from `vectorstore.json`, not from a live call to vets-service. It has no automated tests.
+> Its vet answers come from a vector store preloaded from `vectorstore.json`, not from a live call to vets-service. It has no automated tests. The chat endpoint takes only the message text, and the chat memory advisor is registered once on the shared chat client; nothing in this repository gives the memory a user, session or conversation id.
 
 - **Repo:** [spring-petclinic-microservices](https://github.com/spring-petclinic/spring-petclinic-microservices/tree/e8b747ab522721076cacb5cf688eb8a54ba8c5c9)
 - **Exposes:** `POST /chatclient`
@@ -187,6 +194,9 @@ Spring AI chat back end. Receives chat text, calls the LLM with tools that can l
   - [spring-petclinic-microservices › GenAIServiceApplication.java:25](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/GenAIServiceApplication.java#L25) `@EnableDiscoveryClient`
   - [spring-petclinic-microservices › application.yml:5](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/src/main/resources/application.yml#L5) `name: genai-service`
   - [spring-petclinic-microservices › AIBeanConfiguration.java:21](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/AIBeanConfiguration.java#L21) `SimpleVectorStore.builder(embeddingModel).build()`
+  - [spring-petclinic-microservices › PetclinicChatClient.java:58](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java#L58) `exchange(@RequestBody String query)`
+  - [spring-petclinic-microservices › PetclinicChatClient.java:48](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java#L48) `MessageChatMemoryAdvisor.builder(chatMemory)`
+  - [spring-petclinic-microservices › PetclinicChatClient.java:64](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java#L64) `.user(query)`
 
 ### Data stores
 
@@ -235,12 +245,15 @@ Relational store for vets, specialties and the link table between them. By defau
 
 Git repo of per-service YAML files plus a shared `application.yml` (default HSQLDB init, a `mysql` profile, actuator and Prometheus exposure). The Config server serves it to the services.
 
+> The `mysql` profile is defined once, here in the shared `application.yml`, so every service that takes this file gets the same datasource settings. docker-compose.yml defines no database service.
+
 - **Repo:** [spring-petclinic-microservices-config](https://github.com/spring-petclinic/spring-petclinic-microservices-config/tree/323993ce2519c6d02df63e08bf4458d123d3b611)
 - **Called by / receives from:** Config Server (Git over HTTPS)
 - **Evidence:**
   - [spring-petclinic-microservices-config › application.yml:1](https://github.com/spring-petclinic/spring-petclinic-microservices-config/blob/323993ce2519c6d02df63e08bf4458d123d3b611/application.yml#L1) `# COMMON APPLICATION PROPERTIES`
   - [spring-petclinic-microservices › application.yml:7](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-config-server/src/main/resources/application.yml#L7) `spring-petclinic-microservices-config`
   - [spring-petclinic-microservices-config › customers-service.yml:16](https://github.com/spring-petclinic/spring-petclinic-microservices-config/blob/323993ce2519c6d02df63e08bf4458d123d3b611/customers-service.yml#L16) `port: 8081`
+  - [spring-petclinic-microservices-config › application.yml:98](https://github.com/spring-petclinic/spring-petclinic-microservices-config/blob/323993ce2519c6d02df63e08bf4458d123d3b611/application.yml#L98) `on-profile: mysql`
 
 #### Config Server
 
@@ -416,13 +429,14 @@ sequenceDiagram
 4. **Owner with pets** (Customers service → API gateway, HTTP). The gateway reads it into its own OwnerDetails record (whose pet type keeps only the name); the pets' visits list starts empty.
    - [spring-petclinic-microservices › CustomersServiceClient.java:39](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/application/CustomersServiceClient.java#L39) `.bodyToMono(OwnerDetails.class)`
    - [spring-petclinic-microservices › PetType.java:31](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/model/PetType.java#L31) `private Integer id;`
-5. **Fetch visits for all the owner's pets** (API gateway → Visits service, HTTP). After the owner arrives the gateway joins the pet ids with commas and makes one call, wrapped in a circuit breaker; if it fails, an empty visits list is used.
+5. **Fetch visits for all the owner's pets** (API gateway → Visits service, HTTP). After the owner arrives the gateway joins the pet ids with commas and makes one call, wrapped in a circuit breaker; if it fails, an empty visits list is used. The gateway's only time limit is a 10-second default for its circuit breakers; this breaker uses it, so a slow visits service gives the same empty list, with no error on the page.
    - Call: `GET /pets/visits?petId=1,2`
    - [spring-petclinic-microservices › ApiGatewayController.java:58](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/ApiGatewayController.java#L58) `visitsServiceClient.getVisitsForPets(owner.getPetIds())`
    - [spring-petclinic-microservices › VisitsServiceClient.java:45](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/application/VisitsServiceClient.java#L45) `pets/visits?petId={petId}`
    - [spring-petclinic-microservices › VisitsServiceClient.java:34](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/application/VisitsServiceClient.java#L34) `"http://visits-service/"`
    - [spring-petclinic-microservices › ApiGatewayController.java:61](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/ApiGatewayController.java#L61) `emptyVisitsForPets()`
    - [spring-petclinic-microservices › VisitResource.java:72](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-visits-service/src/main/java/org/springframework/samples/petclinic/visits/web/VisitResource.java#L72) `@GetMapping("pets/visits")`
+   - [spring-petclinic-microservices › ApiGatewayApplication.java:88](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java#L88) `timeoutDuration(Duration.ofSeconds(10))`
 6. **Select visits by pet ids** (Visits service → Visits DB, JDBC). 
    - [spring-petclinic-microservices › VisitResource.java:74](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-visits-service/src/main/java/org/springframework/samples/petclinic/visits/web/VisitResource.java#L74) `visitRepository.findByPetIdIn(petIds)`
 7. **Visits** (Visits service → API gateway, HTTP). Visits wrapped in an items array.
@@ -581,10 +595,17 @@ sequenceDiagram
    - Call: `POST /api/genai/chatclient`
    - [spring-petclinic-microservices › ChatBox.js:47](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/components/ChatBox.js#L47) `request('/api/genai/chatclient', jsonRequest('POST', query)`
    - [spring-petclinic-microservices › client.js:97](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/api/client.js#L97) `body: JSON.stringify(body)`
-2. **Route, prefix stripped** (API gateway → GenAI service, HTTP). 
+2. **Route, prefix stripped** (API gateway → GenAI service, HTTP). The default `CircuitBreaker` filter (fallback `forward:/fallback`) applies to every route, and this route adds its own `genaiCircuitBreaker` (fallback `/fallback`); how the two combine is gateway behaviour not read here. The only time limit configured is the 10-second default, so a slower LLM answer ends in the 503 from `/fallback`, which the chat box shows as its own "Chat is currently unavailable" message.
    - Call: `POST /chatclient`
    - [spring-petclinic-microservices › application.yml:40](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L40) `uri: lb://genai-service`
    - [spring-petclinic-microservices › PetclinicChatClient.java:57](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java#L57) `@PostMapping("/chatclient")`
+   - [spring-petclinic-microservices › application.yml:45](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L45) `CircuitBreaker=name=genaiCircuitBreaker,fallbackUri=/fallback`
+   - [spring-petclinic-microservices › ApiGatewayApplication.java:88](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java#L88) `timeoutDuration(Duration.ofSeconds(10))`
+   - [spring-petclinic-microservices › FallbackController.java:15](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/FallbackController.java#L15) `HttpStatus.SC_SERVICE_UNAVAILABLE`
+   - [spring-petclinic-microservices › application.yml:42](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L42) `Path=/api/genai/**`
+   - [spring-petclinic-microservices › application.yml:44](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L44) `StripPrefix=2`
+   - [spring-petclinic-microservices › application.yml:14](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L14) `fallbackUri: forward:/fallback`
+   - [spring-petclinic-microservices › ChatBox.js:56](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/components/ChatBox.js#L56) `content: 'Chat is currently unavailable'`
 3. **Prompt with system text and tools** (GenAI service → LLM provider (OpenAI), HTTPS). 
    - [spring-petclinic-microservices › PetclinicChatClient.java:35](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java#L35) `.defaultSystem("""`
    - [spring-petclinic-microservices › PetclinicChatClient.java:53](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java#L53) `.defaultTools(petclinicTools)`
@@ -595,6 +616,177 @@ sequenceDiagram
    - [spring-petclinic-microservices › AIDataProvider.java:90](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/AIDataProvider.java#L90) `discoveryClient.getInstances("customers-service")`
 5. **Answer as a plain string (error text on failure)** (GenAI service → API gateway, HTTP). 
    - [spring-petclinic-microservices › PetclinicChatClient.java:69](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java#L69) `Chat is currently unavailable. Please try again later.`
+
+### Register or edit an owner
+
+The **Register owner** and **Edit Owner** pages use one form component. A new owner is `POST`ed, an existing one `PUT`, both through the gateway route `/api/customer/**` to customers-service.
+
+```mermaid
+sequenceDiagram
+  participant n_browser as Browser (Vue UI)
+  participant n_api_gateway as API gateway
+  participant n_customers_service as Customers service
+  participant n_customers_db as Customers DB
+  n_browser->>n_api_gateway: Submit the new owner form
+  n_api_gateway->>n_customers_service: Forward by route, /api/customer prefix stripped
+  n_customers_service->>n_customers_db: Insert the owner
+  n_customers_service-->>n_api_gateway: 201 Created with the saved owner
+  n_api_gateway-->>n_browser: 201, then back to the owners list
+  n_browser->>n_api_gateway: Submit the edit owner form
+  n_api_gateway->>n_customers_service: Forward by route, prefix stripped
+  n_customers_service->>n_customers_db: Load the owner and save the changes
+  n_customers_service-->>n_api_gateway: 204 No Content
+  n_api_gateway-->>n_browser: 204, then back to the owner details page
+```
+
+1. **Submit the new owner form** (Browser (Vue UI) → API gateway, HTTP). Opened from the "Register owner" menu entry (route /owners/new). The telephone field only accepts up to 12 digits.
+   - Call: `POST /api/customer/owners`
+   - [spring-petclinic-microservices › OwnerFormPage.js:49](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerFormPage.js#L49) `request('/api/customer/owners', { ...jsonRequest('POST', payload)`
+   - [spring-petclinic-microservices › OwnerFormPage.js:35](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerFormPage.js#L35) `firstName: owner.firstName.trim()`
+   - [spring-petclinic-microservices › OwnerFormPage.js:96](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerFormPage.js#L96) `pattern="[0-9]{1,12}"`
+   - [spring-petclinic-microservices › router.js:27](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/router.js#L27) `path: '/owners/new'`
+   - [spring-petclinic-microservices › AppNavigation.js:13](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/components/AppNavigation.js#L13) `to="/owners/new"`
+2. **Forward by route, /api/customer prefix stripped** (API gateway → Customers service, HTTP). All five fields must be non-blank and the telephone at most 12 digits, or the request is rejected. The gateway is configured with a default Retry filter for POST on 503 (retries: 1).
+   - Call: `POST /owners`
+   - [spring-petclinic-microservices › application.yml:34](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L34) `uri: lb://customers-service`
+   - [spring-petclinic-microservices › application.yml:36](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L36) `Path=/api/customer/**`
+   - [spring-petclinic-microservices › application.yml:38](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L38) `StripPrefix=2`
+   - [spring-petclinic-microservices › OwnerResource.java:57](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java#L57) `@PostMapping`
+   - [spring-petclinic-microservices › OwnerResource.java:59](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java#L59) `createOwner(@Valid @RequestBody OwnerRequest ownerRequest)`
+   - [spring-petclinic-microservices › OwnerRequest.java:11](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerRequest.java#L11) `@Digits(fraction = 0, integer = 12)`
+   - [spring-petclinic-microservices › application.yml:19](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L19) `methods: POST`
+   - [spring-petclinic-microservices › application.yml:17](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L17) `retries: 1`
+   - [spring-petclinic-microservices › application.yml:18](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L18) `statuses: SERVICE_UNAVAILABLE`
+3. **Insert the owner** (Customers service → Customers DB, JDBC). The request is copied onto a new Owner entity and saved.
+   - [spring-petclinic-microservices › OwnerResource.java:60](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java#L60) `ownerEntityMapper.map(new Owner(), ownerRequest)`
+   - [spring-petclinic-microservices › OwnerResource.java:61](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java#L61) `return ownerRepository.save(owner);`
+4. **201 Created with the saved owner** (Customers service → API gateway, HTTP). The route returns the owner JSON to the browser.
+   - [spring-petclinic-microservices › OwnerResource.java:58](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java#L58) `@ResponseStatus(HttpStatus.CREATED)`
+5. **201, then back to the owners list** (API gateway → Browser (Vue UI), HTTP). The page ignores the body and navigates to the owners list.
+   - [spring-petclinic-microservices › OwnerFormPage.js:50](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerFormPage.js#L50) `await router.push('/owners')`
+6. **Submit the edit owner form** (Browser (Vue UI) → API gateway, HTTP). The Edit Owner button on the owner details page opens /owners/:ownerId/edit, which first loads the current values with GET /api/customer/owners/{ownerId} and then sends the same five fields. (The response steps of the pre-load calls are left out.)
+   - Call: `PUT /api/customer/owners/{ownerId}`
+   - [spring-petclinic-microservices › OwnerFormPage.js:46](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerFormPage.js#L46) `jsonRequest('PUT', payload)`
+   - [spring-petclinic-microservices › OwnerFormPage.js:23](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerFormPage.js#L23) `request('/api/customer/owners/${ownerId}', { signal })`
+   - [spring-petclinic-microservices › router.js:33](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/router.js#L33) `path: '/owners/:ownerId/edit'`
+   - [spring-petclinic-microservices › OwnerDetailsPage.js:41](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerDetailsPage.js#L41) `'/owners/' + owner.id + '/edit'`
+7. **Forward by route, prefix stripped** (API gateway → Customers service, HTTP). 
+   - Call: `PUT /owners/{ownerId}`
+   - [spring-petclinic-microservices › application.yml:34](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L34) `uri: lb://customers-service`
+   - [spring-petclinic-microservices › application.yml:36](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L36) `Path=/api/customer/**`
+   - [spring-petclinic-microservices › application.yml:38](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L38) `StripPrefix=2`
+   - [spring-petclinic-microservices › OwnerResource.java:83](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java#L83) `@PutMapping(value = "/{ownerId}")`
+8. **Load the owner and save the changes** (Customers service → Customers DB, JDBC). An unknown owner id ends in a not-found error and nothing is saved.
+   - [spring-petclinic-microservices › OwnerResource.java:86](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java#L86) `new ResourceNotFoundException("Owner " + ownerId + " not found")`
+   - [spring-petclinic-microservices › OwnerResource.java:90](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java#L90) `ownerRepository.save(ownerModel);`
+9. **204 No Content** (Customers service → API gateway, HTTP). 
+   - [spring-petclinic-microservices › OwnerResource.java:84](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java#L84) `@ResponseStatus(HttpStatus.NO_CONTENT)`
+10. **204, then back to the owner details page** (API gateway → Browser (Vue UI), HTTP). 
+   - [spring-petclinic-microservices › OwnerFormPage.js:47](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerFormPage.js#L47) `router.push('/owners/details/${ownerId}')`
+
+### Add or edit a pet
+
+From the owner details page, **Add New Pet** and the pet's **Edit Pet** link open one pet form. Both go through `/api/customer/**` to customers-service, which attaches the pet to its owner.
+
+```mermaid
+sequenceDiagram
+  participant n_browser as Browser (Vue UI)
+  participant n_api_gateway as API gateway
+  participant n_customers_service as Customers service
+  participant n_customers_db as Customers DB
+  n_browser->>n_api_gateway: Load the pet types for the form
+  n_api_gateway->>n_customers_service: Forward by route, prefix stripped
+  n_browser->>n_api_gateway: Submit the new pet form
+  n_api_gateway->>n_customers_service: Forward by route, prefix stripped
+  n_customers_service->>n_customers_db: Find the owner, add the pet, save
+  n_customers_service-->>n_api_gateway: 201 Created with the saved pet
+  n_api_gateway-->>n_browser: 201, then back to the owner details page
+  n_browser->>n_api_gateway: Open Edit Pet: load the pet
+  n_api_gateway->>n_customers_service: Forward by route, prefix stripped
+  n_customers_service-->>n_api_gateway: Pet with its owner's name
+  n_browser->>n_api_gateway: Submit the edit pet form
+  n_api_gateway->>n_customers_service: Forward by route, prefix stripped
+  n_customers_service->>n_customers_db: Load the pet and save the changes
+  n_customers_service-->>n_api_gateway: 204 No Content
+  n_api_gateway-->>n_browser: 204, then back to the owner details page
+```
+
+1. **Load the pet types for the form** (Browser (Vue UI) → API gateway, HTTP). Add New Pet (route /owners/:ownerId/new-pet) also loads the owner to show the name: GET /api/customer/owners/{ownerId}.
+   - Call: `GET /api/customer/petTypes`
+   - [spring-petclinic-microservices › PetFormPage.js:24](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js#L24) `request('/api/customer/petTypes'`
+   - [spring-petclinic-microservices › PetFormPage.js:35](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js#L35) `requireObject(await request('/api/customer/owners/${ownerId}'`
+   - [spring-petclinic-microservices › router.js:36](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/router.js#L36) `path: '/owners/:ownerId/new-pet'`
+   - [spring-petclinic-microservices › OwnerDetailsPage.js:46](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerDetailsPage.js#L46) `'/owners/' + owner.id + '/new-pet'`
+2. **Forward by route, prefix stripped** (API gateway → Customers service, HTTP). 
+   - Call: `GET /petTypes`
+   - [spring-petclinic-microservices › application.yml:34](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L34) `uri: lb://customers-service`
+   - [spring-petclinic-microservices › application.yml:36](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L36) `Path=/api/customer/**`
+   - [spring-petclinic-microservices › application.yml:38](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L38) `StripPrefix=2`
+   - [spring-petclinic-microservices › PetResource.java:50](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java#L50) `@GetMapping("/petTypes")`
+3. **Submit the new pet form** (Browser (Vue UI) → API gateway, HTTP). The form sends the pet type as an id, not a name.
+   - Call: `POST /api/customer/owners/{ownerId}/pets`
+   - [spring-petclinic-microservices › PetFormPage.js:48](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js#L48) `name: pet.name.trim()`
+   - [spring-petclinic-microservices › PetFormPage.js:49](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js#L49) `birthDate: pet.birthDate`
+   - [spring-petclinic-microservices › PetFormPage.js:50](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js#L50) `typeId: Number(pet.typeId)`
+   - [spring-petclinic-microservices › PetFormPage.js:53](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js#L53) `const url = '/api/customer/owners/${ownerId}/pets${petPath}'`
+   - [spring-petclinic-microservices › PetFormPage.js:58](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js#L58) `jsonRequest(petId ? 'PUT' : 'POST', payload)`
+4. **Forward by route, prefix stripped** (API gateway → Customers service, HTTP). A birth date in the future is rejected with 400 (bean validation). The gateway is configured with a default Retry filter for POST on 503 (retries: 1).
+   - Call: `POST /owners/{ownerId}/pets`
+   - [spring-petclinic-microservices › application.yml:34](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L34) `uri: lb://customers-service`
+   - [spring-petclinic-microservices › application.yml:36](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L36) `Path=/api/customer/**`
+   - [spring-petclinic-microservices › application.yml:38](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L38) `StripPrefix=2`
+   - [spring-petclinic-microservices › PetResource.java:55](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java#L55) `@PostMapping("/owners/{ownerId}/pets")`
+   - [spring-petclinic-microservices › PetRequest.java:29](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetRequest.java#L29) `@PastOrPresent Date birthDate`
+   - [spring-petclinic-microservices › application.yml:19](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L19) `methods: POST`
+   - [spring-petclinic-microservices › PetResourceTest.java:94](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/test/java/org/springframework/samples/petclinic/customers/web/PetResourceTest.java#L94) `.andExpect(status().isBadRequest());`
+   - [spring-petclinic-microservices › application.yml:17](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L17) `retries: 1`
+   - [spring-petclinic-microservices › application.yml:18](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L18) `statuses: SERVICE_UNAVAILABLE`
+5. **Find the owner, add the pet, save** (Customers service → Customers DB, JDBC). An unknown owner id ends in a not-found error. The pet type id is looked up and set if it exists.
+   - [spring-petclinic-microservices › PetResource.java:61](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java#L61) `ownerRepository.findById(ownerId)`
+   - [spring-petclinic-microservices › PetResource.java:65](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java#L65) `owner.addPet(pet);`
+   - [spring-petclinic-microservices › PetResource.java:82](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java#L82) `petRepository.findPetTypeById(petRequest.typeId())`
+   - [spring-petclinic-microservices › PetResource.java:86](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java#L86) `return petRepository.save(pet);`
+6. **201 Created with the saved pet** (Customers service → API gateway, HTTP). The owner is left out of the JSON.
+   - [spring-petclinic-microservices › PetResource.java:56](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java#L56) `@ResponseStatus(HttpStatus.CREATED)`
+   - [spring-petclinic-microservices › Pet.java:54](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/model/Pet.java#L54) `@JsonIgnore`
+7. **201, then back to the owner details page** (API gateway → Browser (Vue UI), HTTP). 
+   - [spring-petclinic-microservices › PetFormPage.js:59](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js#L59) `router.push('/owners/details/${ownerId}')`
+8. **Open Edit Pet: load the pet** (Browser (Vue UI) → API gateway, HTTP). The pet name on the owner details page links to /owners/:ownerId/pets/:petId, the same form in edit mode. Edit mode first loads /petTypes (as above), then the pet; the browser-side responses of these loads are left out.
+   - Call: `GET /api/customer/owners/{ownerId}/pets/{petId}`
+   - [spring-petclinic-microservices › PetFormPage.js:27](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js#L27) `request('/api/customer/owners/${ownerId}/pets/${petId}'`
+   - [spring-petclinic-microservices › router.js:39](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/router.js#L39) `path: '/owners/:ownerId/pets/:petId'`
+   - [spring-petclinic-microservices › OwnerDetailsPage.js:61](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerDetailsPage.js#L61) `'/owners/' + owner.id + '/pets/' + pet.id`
+   - [spring-petclinic-microservices › PetFormPage.js:24](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js#L24) `request('/api/customer/petTypes'`
+9. **Forward by route, prefix stripped** (API gateway → Customers service, HTTP). The gateway strips `/api/customer` and forwards the real owner id; `*` is the Spring mapping pattern, so the owner id is not used and the pet is found by its own id.
+   - Call: `GET /owners/*/pets/{petId}`
+   - [spring-petclinic-microservices › application.yml:34](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L34) `uri: lb://customers-service`
+   - [spring-petclinic-microservices › application.yml:36](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L36) `Path=/api/customer/**`
+   - [spring-petclinic-microservices › application.yml:38](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L38) `StripPrefix=2`
+   - [spring-petclinic-microservices › PetResource.java:89](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java#L89) `@GetMapping("owners/*/pets/{petId}")`
+10. **Pet with its owner's name** (Customers service → API gateway, HTTP). The owner is a single string, first and last name.
+   - [spring-petclinic-microservices › PetResource.java:89](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java#L89) `@GetMapping("owners/*/pets/{petId}")`
+11. **Submit the edit pet form** (Browser (Vue UI) → API gateway, HTTP). 
+   - Call: `PUT /api/customer/owners/{ownerId}/pets/{petId}`
+   - [spring-petclinic-microservices › PetFormPage.js:58](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js#L58) `jsonRequest(petId ? 'PUT' : 'POST', payload)`
+   - [spring-petclinic-microservices › PetFormPage.js:52](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js#L52) `const petPath = petId ? '/${petId}' : '';`
+12. **Forward by route, prefix stripped** (API gateway → Customers service, HTTP). The owner id in the path is a wildcard and is not used; the pet is found by its own id.
+   - Call: `PUT /owners/*/pets/{petId}`
+   - [spring-petclinic-microservices › application.yml:34](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L34) `uri: lb://customers-service`
+   - [spring-petclinic-microservices › application.yml:36](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L36) `Path=/api/customer/**`
+   - [spring-petclinic-microservices › application.yml:38](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L38) `StripPrefix=2`
+   - [spring-petclinic-microservices › PetResource.java:69](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java#L69) `@PutMapping("/owners/*/pets/{petId}")`
+13. **Load the pet and save the changes** (Customers service → Customers DB, JDBC). An unknown pet id ends in a not-found error and nothing is saved.
+   - [spring-petclinic-microservices › PetResource.java:73](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java#L73) `Pet pet = findPetById(petId);`
+   - [spring-petclinic-microservices › PetResource.java:98](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java#L98) `new ResourceNotFoundException("Pet " + petId + " not found")`
+   - [spring-petclinic-microservices › PetResource.java:86](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java#L86) `return petRepository.save(pet);`
+14. **204 No Content** (Customers service → API gateway, HTTP). 
+   - [spring-petclinic-microservices › PetResource.java:70](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java#L70) `@ResponseStatus(HttpStatus.NO_CONTENT)`
+15. **204, then back to the owner details page** (API gateway → Browser (Vue UI), HTTP). 
+   - [spring-petclinic-microservices › PetFormPage.js:59](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js#L59) `router.push('/owners/details/${ownerId}')`
+
+**Tested in:**
+- `PetResourceTest.shouldCreatePetWithoutBodyId` [spring-petclinic-microservices › PetResourceTest.java:138](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/test/java/org/springframework/samples/petclinic/customers/web/PetResourceTest.java#L138) `mvc.perform(post("/owners/2/pets")`: POST /owners/2/pets returns 201 with the new pet
+- `PetResourceTest.shouldUpdatePetUsingPathIdWithoutBodyId` [spring-petclinic-microservices › PetResourceTest.java:103](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/src/test/java/org/springframework/samples/petclinic/customers/web/PetResourceTest.java#L103) `mvc.perform(put("/owners/2/pets/2")`: PUT /owners/2/pets/2 returns 204 and saves the new name
 
 ## Facts
 
@@ -619,6 +811,16 @@ sequenceDiagram
   - [spring-petclinic-microservices-config › visits-service.yml:16](https://github.com/spring-petclinic/spring-petclinic-microservices-config/blob/323993ce2519c6d02df63e08bf4458d123d3b611/visits-service.yml#L16) `port: 8082`
   - [spring-petclinic-microservices-config › visits-service.yml:20](https://github.com/spring-petclinic/spring-petclinic-microservices-config/blob/323993ce2519c6d02df63e08bf4458d123d3b611/visits-service.yml#L20) `defaultZone: http://discovery-server:8761/eureka/`
   - [spring-petclinic-microservices-config › application.yml:5](https://github.com/spring-petclinic/spring-petclinic-microservices-config/blob/323993ce2519c6d02df63e08bf4458d123d3b611/application.yml#L5) `port: 0`
+- The only time limit configured in the gateway is **10 seconds**, set as the default for its circuit breakers (the default Resilience4j configuration; no per-breaker setting or `resilience4j.*` property exists in either repo). The browser gives up after 15 seconds. On the chat route a timeout ends in a 503 from `/fallback`, and the chat box then shows its own "Chat is currently unavailable" message. On the owner page the 10 seconds cover only the visits call (the customers call before it has no limit); on timeout the visits fall back to an empty list, so an owner shows without visits and no error.
+  - [spring-petclinic-microservices › ApiGatewayApplication.java:88](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java#L88) `timeoutDuration(Duration.ofSeconds(10))`
+  - [spring-petclinic-microservices › ApiGatewayApplication.java:86](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java#L86) `factory.configureDefault(id -> new Resilience4JConfigBuilder(id)`
+  - [spring-petclinic-microservices › application.yml:45](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/application.yml#L45) `CircuitBreaker=name=genaiCircuitBreaker,fallbackUri=/fallback`
+  - [spring-petclinic-microservices › FallbackController.java:15](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/FallbackController.java#L15) `HttpStatus.SC_SERVICE_UNAVAILABLE`
+  - [spring-petclinic-microservices › ApiGatewayController.java:60](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/ApiGatewayController.java#L60) `cbFactory.create("getOwnerDetails")`
+  - [spring-petclinic-microservices › ApiGatewayController.java:61](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/ApiGatewayController.java#L61) `cb.run(it, throwable -> emptyVisitsForPets())`
+  - [spring-petclinic-microservices › client.js:1](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/api/client.js#L1) `const REQUEST_TIMEOUT_MS = 15000;`
+  - [spring-petclinic-microservices › ChatBox.js:56](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/components/ChatBox.js#L56) `content: 'Chat is currently unavailable'`
+  - [spring-petclinic-microservices › client.js:82](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/api/client.js#L82) `throw new ApiError('Request failed (`
 
 ### Data
 
@@ -631,6 +833,24 @@ sequenceDiagram
   - [spring-petclinic-microservices › pom.xml:64](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-visits-service/pom.xml#L64) `<artifactId>hsqldb</artifactId>`
 - Hibernate does not create tables (`ddl-auto: none`); schema comes from the SQL scripts.
   - [spring-petclinic-microservices-config › application.yml:27](https://github.com/spring-petclinic/spring-petclinic-microservices-config/blob/323993ce2519c6d02df63e08bf4458d123d3b611/application.yml#L27) `ddl-auto: none`
+- Under the `mysql` profile the datasource settings live once, in the shared config. No service has its own datasource setting, and customers, visits, vets and genai-service all ship the MySQL driver, so every one of them that takes the shared config uses the same database. docker-compose.yml defines eleven services (config, discovery, customers, visits, vets, genai, api-gateway, tracing, admin, grafana, prometheus) and none is a database; the image sets the `docker` profile, not `mysql`.
+  - [spring-petclinic-microservices-config › application.yml:98](https://github.com/spring-petclinic/spring-petclinic-microservices-config/blob/323993ce2519c6d02df63e08bf4458d123d3b611/application.yml#L98) `on-profile: mysql`
+  - [spring-petclinic-microservices › pom.xml:66](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-customers-service/pom.xml#L66) `<artifactId>mysql-connector-j</artifactId>`
+  - [spring-petclinic-microservices › pom.xml:73](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-visits-service/pom.xml#L73) `<artifactId>mysql-connector-j</artifactId>`
+  - [spring-petclinic-microservices › pom.xml:94](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-vets-service/pom.xml#L94) `<artifactId>mysql-connector-j</artifactId>`
+  - [spring-petclinic-microservices › Dockerfile:14](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/docker/Dockerfile#L14) `SPRING_PROFILES_ACTIVE=docker`
+  - [spring-petclinic-microservices › pom.xml:107](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/pom.xml#L107) `<artifactId>mysql-connector-j</artifactId>`
+  - [spring-petclinic-microservices › docker-compose.yml:2](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/docker-compose.yml#L2) `config-server:`
+  - [spring-petclinic-microservices › docker-compose.yml:17](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/docker-compose.yml#L17) `discovery-server:`
+  - [spring-petclinic-microservices › docker-compose.yml:35](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/docker-compose.yml#L35) `customers-service:`
+  - [spring-petclinic-microservices › docker-compose.yml:50](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/docker-compose.yml#L50) `visits-service:`
+  - [spring-petclinic-microservices › docker-compose.yml:65](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/docker-compose.yml#L65) `vets-service:`
+  - [spring-petclinic-microservices › docker-compose.yml:81](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/docker-compose.yml#L81) `genai-service:`
+  - [spring-petclinic-microservices › docker-compose.yml:101](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/docker-compose.yml#L101) `api-gateway:`
+  - [spring-petclinic-microservices › docker-compose.yml:116](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/docker-compose.yml#L116) `tracing-server:`
+  - [spring-petclinic-microservices › docker-compose.yml:126](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/docker-compose.yml#L126) `admin-server:`
+  - [spring-petclinic-microservices › docker-compose.yml:143](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/docker-compose.yml#L143) `grafana-server:`
+  - [spring-petclinic-microservices › docker-compose.yml:153](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/docker-compose.yml#L153) `prometheus-server:`
 
 ### How it is built
 
@@ -727,6 +947,12 @@ sequenceDiagram
 - genai-service also pulls in the Spring Cloud Gateway starter and JPA/HSQLDB in its pom, although no gateway routes or entities were found in its source.
   - [spring-petclinic-microservices › pom.xml:80](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/pom.xml#L80) `spring-cloud-starter-gateway-server-webflux`
   - [spring-petclinic-microservices › pom.xml:53](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/pom.xml#L53) `spring-boot-starter-data-jpa`
+- The chat endpoint receives only the message text as its request body, and the prompt is built with just `.user(query)`; this repository never sets a conversation id, user or session for the memory advisor, which uses the `ChatMemory` bean injected into the controller. The source comment says the memory keeps up to 10 previous messages.
+  - [spring-petclinic-microservices › PetclinicChatClient.java:58](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java#L58) `exchange(@RequestBody String query)`
+  - [spring-petclinic-microservices › PetclinicChatClient.java:48](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java#L48) `MessageChatMemoryAdvisor.builder(chatMemory)`
+  - [spring-petclinic-microservices › ChatBox.js:47](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-api-gateway/src/main/resources/static/scripts/components/ChatBox.js#L47) `request('/api/genai/chatclient', jsonRequest('POST', query)`
+  - [spring-petclinic-microservices › PetclinicChatClient.java:64](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java#L64) `.user(query)`
+  - [spring-petclinic-microservices › PetclinicChatClient.java:47](https://github.com/spring-petclinic/spring-petclinic-microservices/blob/e8b747ab522721076cacb5cf688eb8a54ba8c5c9/spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java#L47) `for up to 10 previous messages`
 
 ## Checking this document
 

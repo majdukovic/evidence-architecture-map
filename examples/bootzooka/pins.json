@@ -1,0 +1,10 @@
+{
+  "verifiedOn": "2026-11-10",
+  "repos": {
+    "bootzooka": {
+      "branch": "master",
+      "sha": "8d93dde94418ac4771be095ef74376561f7de444",
+      "web": "https://github.com/softwaremill/bootzooka"
+    }
+  }
+}

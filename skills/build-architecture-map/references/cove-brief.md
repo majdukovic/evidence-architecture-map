@@ -35,7 +35,8 @@ earlier analysis, and that is deliberate: do not guess what someone else conclud
 
 - Repos are cloned under: <reposDir>. Read with git only, never the working tree:
   `git -C <repo> grep -n -E '<p>' origin/HEAD -- <glob>`, `git -C <repo> show origin/HEAD:<path>`.
-  One simple command per call (no `cd`, no shell variables). Never checkout, reset, pull or edit.
+  One simple command per call (no `cd`, no shell variables). If `git show` is refused, `git -C <repo> grep -n '' origin/HEAD -- <path>` or
+  `node <skill-dir>/scripts/show.js <repo-dir> <path> [from] [to]` print the file with line numbers. Never checkout, reset, pull or edit.
 - For each question give: the answer in one or two sentences; one to three evidence items as
   `repo:path:line` plus an exact quote from that line; and a confidence: `confirmed` (the code shows it
   directly), `partial` (some of it shown, say what is missing) or `not found` (say what you searched).

@@ -20,7 +20,8 @@ Bundled files (paths relative to this skill's folder, `${CLAUDE_SKILL_DIR}` in C
 ## Phase 0: Agree the scope (ask, do not assume)
 
 Ask the user, in one message:
-1. Which repos are in scope and where they are cloned (one folder of clones is easiest). Monorepo is fine.
+1. Which repos are in scope and where they are cloned (one folder of clones is easiest). Monorepo is fine. Libraries
+   whose behaviour matters (a gateway, a resilience library) can be added as repos too.
 2. Who the map is for, and the 3 to 6 flows a newcomer must understand first.
 3. Which hint sources you may read: docs folders, agent instructions and history, wiki, tracker, dashboards,
    chat. See `references/context-sources.md`. Default: repos and their docs only.
@@ -29,7 +30,8 @@ Ask the user, in one message:
 Then `node <skill-dir>/scripts/init.js <map-dir> --title "<title>" --repos <clones-dir>`. Always pass `--repos`:
 it records where the clones are (`reposDir` in `map.json`), and every later command depends on it.
 Check each repo with `git -C <repo> rev-parse --verify origin/HEAD`; only if that fails, run
-`git -C <repo> remote set-head origin -a` (it contacts the remote). Fetch only if the user agrees.
+`git -C <repo> remote set-head origin -a` (it contacts the remote). Fetch only if the user agrees; in an unattended run,
+do not fetch unless the prompt says so.
 
 **Commands:** read code with `git -C <repo> show origin/HEAD:<path>` and `git -C <repo> grep -n -E '<p>' origin/HEAD -- <glob>`.
 One simple command per call: no `cd`, no shell variables or `$(...)`, no long `&&` chains. Agent permission
@@ -40,21 +42,23 @@ systems block or prompt for commands they cannot vet, which stalls unattended ru
 Read `references/where-to-look.md`, `references/evidence-rules.md` and `references/data-format.md`.
 For each repo, from the default branch with git: language and build, deployables, entry points, API
 contracts, clients, messaging, datastores, deployment, CI. Add allowed hint sources. Write candidates to
-`<map-dir>/review/discovery.md`. Agree layer names and component ids before Phase 2.
+`<map-dir>/review/discovery.md` (the `review/` folder is inside the map folder). Agree layer names and component ids before Phase 2.
 
 ## Phase 2: Draft claims with evidence
 
 Split by repo group or domain and use parallel research agents with `references/research-brief.md` (or do it
 yourself in slices). Have each write a fragment file, then combine them with
-`node <skill-dir>/scripts/merge.js <map-dir> <fragment.json>...` (it reports id conflicts to resolve by hand).
+`node <skill-dir>/scripts/merge.js <map-dir> <fragment.json>...` (it reports id conflicts to resolve by hand, and rewrites the files as 2-space JSON, so edit them afterwards with a
+JSON-aware tool or the Edit tool, not text replacement on old formatting). For bulk edits, write a small script to a
+file and run `node <file>`; inline `node -e '...'` with braces is often blocked by permission checks.
 To read a file with line numbers for exact quotes: `node <skill-dir>/scripts/show.js <repo-dir> <path> [from] [to]`.
 Every item has evidence; payloads use real field names. Run `node <skill-dir>/scripts/build.js <map-dir> --pin`
 early to catch format errors.
 
 ## Phase 3: Chain of Verification (do not skip)
 
-Follow `references/cove-brief.md`. **Run every research, answering and review agent in the foreground and wait for
-its result before moving on.** Several can run in parallel in one turn, but do not end your turn while any is still
+Follow `references/cove-brief.md`. Use agents that can run `git` and `node` (a general-purpose agent, not a read-only one without a shell). **Run every
+research, answering and review agent in the foreground and wait for its result before moving on.** Several can run in parallel in one turn, but do not end your turn while any is still
 running: in non-interactive runs (`claude -p`, CI) background agents are stopped soon after your last turn, and
 their work is lost.
 1. Write neutral questions for every claim.
@@ -69,7 +73,9 @@ their work is lost.
 node <skill-dir>/scripts/build.js <map-dir> --pin --verify     # must end "N/N references OK"
 ```
 Fix every failure the verifier lists: re-read the code and update the claim, not just the line number.
-Run the UI audit until `problems` and `consoleErrors` are empty: with the Playwright MCP, or with
+Run the UI audit until `problems` and `consoleErrors` are empty: with the Playwright MCP (first `browser_run_code_unsafe` with
+`async (page) => { await page.goto('file:///<map-dir>/architecture.html'); }`, then `browser_run_code_unsafe` with
+`filename` set to `scripts/ui-audit.js`), or with
 `node <skill-dir>/scripts/run-ui-audit.mjs <map-dir>` after `npm i -D playwright && npx playwright install chromium`
 in your working folder. If neither is possible, say so in the hand-over; do not skip it silently.
 

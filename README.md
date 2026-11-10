@@ -21,10 +21,13 @@ Examples, each with its verification results:
 | Example | Stack | Map | Spot-check of 30 claims |
 |---|---|---|---|
 | [`online-boutique`](examples/online-boutique) | Go, C#, Node, Python, Java; gRPC | 17 components, 25 connections, 3 flows, 411 references | (built step by step, reviewed twice) |
-| [`eshop`](examples/eshop) | .NET; RabbitMQ events, gRPC, PostgreSQL, Redis | 14 components, 28 connections, 3 flows, 221 references | 26 correct, 4 minor, 0 wrong |
-| [`petclinic`](examples/petclinic) | Java Spring Cloud; gateway, Eureka, config server; **two repos** | 17 components, 35 connections, 5 flows, 316 references | 28 correct, 2 minor, 0 wrong |
+| [`eshop`](examples/eshop) | .NET; RabbitMQ events, gRPC, PostgreSQL, Redis | 16 components, 31 connections, 3 flows, 263 references | 26 correct, 4 minor, 0 wrong |
+| [`petclinic`](examples/petclinic) | Java Spring Cloud; gateway, Eureka, config server; **two repos** | 17 components, 35 connections, 7 flows, 452 references | 28 correct, 2 minor, 0 wrong |
+| [`bootzooka`](examples/bootzooka) | **Scala** 3 modular monolith; React UI, PostgreSQL, e-mail | 13 components, 19 connections, 3 flows, 141 references | 28 correct, 2 minor, 0 wrong |
 
-The eShop and PetClinic maps were built by unattended runs of the plugin with no human steering.
+The eShop, PetClinic and Bootzooka maps were built by unattended runs of the plugin with no human steering, and the
+eShop and PetClinic maps were then extended by unattended runs of the update skill. Minor items found by the
+spot-checks were fixed afterwards.
 
 ![Map view: a component card with its connections and evidence](docs/map.png)
 ![Flow view: a step with its request payload and the definition it comes from](docs/flow.png)
@@ -101,20 +104,26 @@ Related links on the page are labelled as not evidence and are never checked.
 ```bash
 K=skills/build-architecture-map/scripts
 node $K/init.js docs/architecture-map --title "Acme Platform Map" --repos ~/code/acme   # new map folder
-node $K/build.js docs/architecture-map --pin --verify   # pin commits, build, check every reference
+node $K/show.js ~/code/acme/orders src/Main.scala 30 60 # a file from the default branch, numbered, for exact quotes
+node $K/merge.js docs/architecture-map draft-*.json     # combine research agents' drafts, report conflicts
+node $K/build.js docs/architecture-map --pin --verify   # pin commits, build, check every quote is on its exact line
 node $K/build.js docs/architecture-map --verify         # rebuild after edits
-node $K/verify.js docs/architecture-map [--at pinned] [--json]
+node $K/verify.js docs/architecture-map [--at pinned] [--exact] [--json]
 bash $K/verify-ci.sh docs/architecture-map              # clone the cited repos shallowly and check (CI)
 node $K/run-ui-audit.mjs docs/architecture-map          # click through every component and step (needs Playwright)
 node test/run-tests.js                                  # the kit's own tests
 ```
 
 The build refuses: components, connections, steps or facts without evidence; unknown ids; malformed references;
-quotes that look like credentials; references to files that usually hold secrets (`.env`, keys, `credentials`,
-`secrets.yaml`); and HTML that could run script. The verifier also fails a reference whose surrounding lines look
-like a credential, so the page never links to one.
+quotes that look like credentials; references to files that hold keys or credentials (`*.pem`, `*.key`, keystores,
+`credentials`, `secrets.yaml`, `.netrc`); and HTML that could run script. The verifier also fails a reference when the
+cited line or the quoted line sits within two lines of a literal credential, so the page never links to one; type
+declarations, `${ENV}` placeholders and field names such as `password: String` do not count. Right after `--pin`, every
+quote must be on its exact line; later, a quote that moved up to two lines is reported as a note.
 
 The data format is described in [`data-format.md`](skills/build-architecture-map/references/data-format.md).
+Components and connections that exist only in some setups (a profile, a flag, an optional add-on) carry a
+`condition` and are drawn dashed.
 
 ## Limitations
 
@@ -123,10 +132,17 @@ The data format is described in [`data-format.md`](skills/build-architecture-map
   remove every one. Read the map critically and report what is wrong.
 - Wiring that only exists at runtime (service mesh rules applied by hand, feature flags in a SaaS console) cannot
   be proven from code and is left out unless it is in git.
-- A full run on a large system uses many agent calls. Start with the flows that matter most.
+- Behaviour that lives inside a library (a gateway's default timeout, how an admin server discovers services) is
+  left out unless you add the library's source as a repo, because the project's own code cannot prove it.
+- A full run uses many agent calls: the example runs cost about USD 4 to 11 each. Start with the flows that matter most.
+- An unattended run can only do the UI audit if Playwright is available to it; otherwise run
+  `run-ui-audit.mjs` afterwards.
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE). The demo quotes short excerpts from
-[GoogleCloudPlatform/microservices-demo](https://github.com/GoogleCloudPlatform/microservices-demo)
-(Apache License 2.0) and links to it at a fixed commit.
+MIT, see [LICENSE](LICENSE). The examples quote short excerpts from, and link at fixed commits to,
+[GoogleCloudPlatform/microservices-demo](https://github.com/GoogleCloudPlatform/microservices-demo) (Apache 2.0),
+[dotnet/eShop](https://github.com/dotnet/eShop) (MIT),
+[spring-petclinic-microservices](https://github.com/spring-petclinic/spring-petclinic-microservices) and its
+[config repo](https://github.com/spring-petclinic/spring-petclinic-microservices-config) (Apache 2.0), and
+[softwaremill/bootzooka](https://github.com/softwaremill/bootzooka) (Apache 2.0).

@@ -1,10 +1,13 @@
 // UI audit for a built architecture page. It is a single function expression so it can run two ways:
-//  1. Playwright MCP: serve the map folder (python3 -m http.server 8790 --bind 127.0.0.1) and call
-//     browser_run_code_unsafe with filename pointing at this file. It opens AUDIT_URL below.
+//  1. Playwright MCP: open the page first with browser_run_code_unsafe and code
+//     async (page) => { await page.goto('file:///<map-dir>/architecture.html'); }   (browser_navigate may refuse file:)
+//     then call browser_run_code_unsafe with filename pointing at this file. It audits the page that is open.
 //  2. Plain Playwright: node run-ui-audit.mjs <map-dir> (serves the folder itself and passes the URL).
 // Returns { problems: [...], consoleErrors: [...], ...counts }. Both lists must be empty.
 async (page, url) => {
-  const AUDIT_URL = url || 'http://127.0.0.1:8790/architecture.html';
+  // the URL passed in, else the architecture page already open (file:// works), else a local server
+  const open = /^(file|https?):.*\.html/.test(page.url()) ? page.url().split(/[?#]/)[0] : null;
+  const AUDIT_URL = url || open || 'http://127.0.0.1:8790/architecture.html';
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });

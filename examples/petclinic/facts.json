@@ -82,6 +82,47 @@
             "quote": "port: 0"
           }
         ]
+      },
+      {
+        "text": "The only time limit configured in the gateway is <b>10 seconds</b>, set as the default for its circuit breakers (the default Resilience4j configuration; no per-breaker setting or <code>resilience4j.*</code> property exists in either repo). The browser gives up after 15 seconds. On the chat route a timeout ends in a 503 from <code>/fallback</code>, and the chat box then shows its own \"Chat is currently unavailable\" message. On the owner page the 10 seconds cover only the visits call (the customers call before it has no limit); on timeout the visits fall back to an empty list, so an owner shows without visits and no error.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java:88",
+            "quote": "timeoutDuration(Duration.ofSeconds(10))"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java:86",
+            "quote": "factory.configureDefault(id -> new Resilience4JConfigBuilder(id)"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:45",
+            "quote": "CircuitBreaker=name=genaiCircuitBreaker,fallbackUri=/fallback"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/FallbackController.java:15",
+            "quote": "HttpStatus.SC_SERVICE_UNAVAILABLE"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/ApiGatewayController.java:60",
+            "quote": "cbFactory.create(\"getOwnerDetails\")"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/ApiGatewayController.java:61",
+            "quote": "cb.run(it, throwable -> emptyVisitsForPets())"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/api/client.js:1",
+            "quote": "const REQUEST_TIMEOUT_MS = 15000;"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/components/ChatBox.js:56",
+            "quote": "content: 'Chat is currently unavailable'"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/api/client.js:82",
+            "quote": "throw new ApiError(`Request failed ("
+          }
+        ]
       }
     ]
   },
@@ -123,6 +164,79 @@
           {
             "ref": "spring-petclinic-microservices-config:application.yml:27",
             "quote": "ddl-auto: none"
+          }
+        ]
+      },
+      {
+        "text": "Under the <code>mysql</code> profile the datasource settings live once, in the shared config. No service has its own datasource setting, and customers, visits, vets and genai-service all ship the MySQL driver, so every one of them that takes the shared config uses the same database. docker-compose.yml defines eleven services (config, discovery, customers, visits, vets, genai, api-gateway, tracing, admin, grafana, prometheus) and none is a database; the image sets the <code>docker</code> profile, not <code>mysql</code>.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices-config:application.yml:98",
+            "quote": "on-profile: mysql"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/pom.xml:66",
+            "quote": "<artifactId>mysql-connector-j</artifactId>"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-visits-service/pom.xml:73",
+            "quote": "<artifactId>mysql-connector-j</artifactId>"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-vets-service/pom.xml:94",
+            "quote": "<artifactId>mysql-connector-j</artifactId>"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker/Dockerfile:14",
+            "quote": "SPRING_PROFILES_ACTIVE=docker"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/pom.xml:107",
+            "quote": "<artifactId>mysql-connector-j</artifactId>"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:2",
+            "quote": "config-server:"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:17",
+            "quote": "discovery-server:"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:35",
+            "quote": "customers-service:"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:50",
+            "quote": "visits-service:"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:65",
+            "quote": "vets-service:"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:81",
+            "quote": "genai-service:"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:101",
+            "quote": "api-gateway:"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:116",
+            "quote": "tracing-server:"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:126",
+            "quote": "admin-server:"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:143",
+            "quote": "grafana-server:"
+          },
+          {
+            "ref": "spring-petclinic-microservices:docker-compose.yml:153",
+            "quote": "prometheus-server:"
           }
         ]
       }
@@ -503,6 +617,31 @@
           {
             "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/pom.xml:53",
             "quote": "spring-boot-starter-data-jpa"
+          }
+        ]
+      },
+      {
+        "text": "The chat endpoint receives only the message text as its request body, and the prompt is built with just <code>.user(query)</code>; this repository never sets a conversation id, user or session for the memory advisor, which uses the <code>ChatMemory</code> bean injected into the controller. The source comment says the memory keeps up to 10 previous messages.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:58",
+            "quote": "exchange(@RequestBody String query)"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:48",
+            "quote": "MessageChatMemoryAdvisor.builder(chatMemory)"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/components/ChatBox.js:47",
+            "quote": "request('/api/genai/chatclient', jsonRequest('POST', query)"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:64",
+            "quote": ".user(query)"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:47",
+            "quote": "for up to 10 previous messages"
           }
         ]
       }

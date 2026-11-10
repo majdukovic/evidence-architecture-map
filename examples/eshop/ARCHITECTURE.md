@@ -12,6 +12,8 @@ flowchart LR
     n_webapp["WebApp (storefront)"]
     n_mobile_bff["Mobile BFF (YARP)"]
     n_webhooks_client["Webhook client (sample)"]
+    n_clientapp["ClientApp (MAUI)"]
+    n_hybridapp["HybridApp (MAUI Blazor)"]
   end
   subgraph n_layer_services["HTTP / gRPC services"]
     n_identity_api["Identity API"]
@@ -44,6 +46,9 @@ flowchart LR
   n_webhooks_api -->|"HTTP"| n_identity_api
   n_webhooks_client -->|"HTTP"| n_webhooks_api
   n_webhooks_api -->|"HTTP"| n_webhooks_client
+  n_clientapp -->|"HTTP"| n_mobile_bff
+  n_hybridapp -->|"HTTP"| n_mobile_bff
+  n_clientapp -->|"gRPC"| n_basket_api
   n_basket_api -->|"Redis"| n_redis
   n_catalog_api -->|"PostgreSQL"| n_postgres
   n_ordering_api -->|"PostgreSQL"| n_postgres
@@ -70,23 +75,28 @@ flowchart LR
 
 The customer-facing web shop. It calls **Catalog** over HTTP, **Basket** over gRPC and **Ordering** over HTTP, signs users in against **Identity**, and listens to order-status events on RabbitMQ to refresh the order page.
 
+> Checkout calls Ordering API and then deletes the basket without looking at the order call's result, so an order request that comes back with an error status still empties the basket.
+
 - **Repo:** [eShop](https://github.com/dotnet/eShop/tree/913acea66708a59595351174cee9b29f37179d29)
 - **Exposes:** `Web UI`, `GET /product-images/{id} (forwarded to Catalog)`
 - **Calls / sends to:** Catalog API (HTTP), Basket API (gRPC), Ordering API (HTTP), Identity API (HTTP)
 - **Called by / receives from:** RabbitMQ event bus (RabbitMQ)
 - **Evidence:**
+  - [eShop › BasketState.cs:108](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/WebApp/Services/BasketState.cs#L108) `await DeleteBasketAsync();`
+  - [eShop › OrderingService.cs:17](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/WebApp/Services/OrderingService.cs#L17) `return httpClient.SendAsync(requestMessage);`
   - [eShop › AppHost.cs:71](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/eShop.AppHost/AppHost.cs#L71) `AddDotnetProject("webapp", "../WebApp"`
   - [eShop › Program.cs:32](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/WebApp/Program.cs#L32) `app.MapForwarder("/product-images/{id}"`
 
 #### Mobile BFF (YARP)
 
-A YARP reverse proxy declared in the AppHost. It forwards catalog, ordering and identity routes to the matching services. There is no Basket route on it.
+A YARP reverse proxy declared in the AppHost. It forwards catalog, ordering and identity routes to the matching services. There is no Basket route on it. In the repo, its callers are the **ClientApp** (MAUI) and **HybridApp** mobile apps.
 
 > Catalog and orders routes only match requests that carry an api-version query parameter (orders: 1.0 or 1).
 
 - **Repo:** [eShop](https://github.com/dotnet/eShop/tree/913acea66708a59595351174cee9b29f37179d29)
 - **Exposes:** `/api/catalog/*`, `/api/orders/*`, `/identity/*`
 - **Calls / sends to:** Catalog API (HTTP), Ordering API (HTTP), Identity API (HTTP)
+- **Called by / receives from:** ClientApp (MAUI) (HTTP), HybridApp (MAUI Blazor) (HTTP)
 - **Evidence:**
   - [eShop › AppHost.cs:62](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/eShop.AppHost/AppHost.cs#L62) `builder.AddYarp("mobile-bff")`
   - [eShop › Extensions.cs:146](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/eShop.AppHost/Extensions.cs#L146) `yarp.AddRoute("/api/orders/{*any}"`
@@ -97,12 +107,37 @@ A YARP reverse proxy declared in the AppHost. It forwards catalog, ordering and 
 A sample web app that registers webhook subscriptions with **Webhooks API** and receives the callbacks on its own endpoint.
 
 - **Repo:** [eShop](https://github.com/dotnet/eShop/tree/913acea66708a59595351174cee9b29f37179d29)
-- **Exposes:** `POST /webhook-received`
+- **Exposes:** `POST /webhook-received`, `OPTIONS /check`
 - **Calls / sends to:** Webhooks API (HTTP)
 - **Called by / receives from:** Webhooks API (HTTP)
 - **Evidence:**
+  - [eShop › WebhookEndpoints.cs:16](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/WebhookClient/Endpoints/WebhookEndpoints.cs#L16) `app.MapMethods("/check", [HttpMethods.Options]`
   - [eShop › AppHost.cs:67](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/eShop.AppHost/AppHost.cs#L67) `AddDotnetProject("webhooksclient", "../WebhookClient"`
   - [eShop › WebhookEndpoints.cs:31](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/WebhookClient/Endpoints/WebhookEndpoints.cs#L31) `app.MapPost("/webhook-received"`
+
+#### ClientApp (MAUI)
+
+A .NET MAUI mobile app. It reads the catalogue and places and lists orders through the **Mobile BFF**, and talks to **Basket API** directly over gRPC. The gateway addresses are settings the user can change. It starts on mock services by default; the real calls happen once mocks are switched off in its settings.
+
+> The Mobile BFF has no Basket route, so this app calls Basket API itself (default address port 5221, Basket API's own launch port).
+
+- **Repo:** [eShop](https://github.com/dotnet/eShop/tree/913acea66708a59595351174cee9b29f37179d29)
+- **Calls / sends to:** Mobile BFF (YARP) (HTTP), Basket API (gRPC)
+- **Evidence:**
+  - [eShop › MauiProgram.cs:28](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/ClientApp/MauiProgram.cs#L28) `.UseMauiApp<App>()`
+  - [eShop › eShop.slnx:21](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/eShop.slnx#L21) `<Project Path="src/ClientApp/ClientApp.csproj" />`
+  - [eShop › SettingsService.cs:25](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/ClientApp/Services/Settings/SettingsService.cs#L25) `private readonly bool UseMocksDefault = true;`
+  - [eShop › MauiProgram.cs:112](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/ClientApp/MauiProgram.cs#L112) `aes.UpdateDependencies(settingsService.UseMocks);`
+
+#### HybridApp (MAUI Blazor)
+
+A .NET MAUI Blazor Hybrid app that browses the catalogue through the **Mobile BFF**. It has no basket or order code.
+
+- **Repo:** [eShop](https://github.com/dotnet/eShop/tree/913acea66708a59595351174cee9b29f37179d29)
+- **Calls / sends to:** Mobile BFF (YARP) (HTTP)
+- **Evidence:**
+  - [eShop › MauiProgram.cs:14](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/HybridApp/MauiProgram.cs#L14) `var builder = MauiApp.CreateBuilder();`
+  - [eShop › eShop.slnx:20](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/eShop.slnx#L20) `<Project Path="src/HybridApp/HybridApp.csproj" />`
 
 ### HTTP / gRPC services
 
@@ -129,7 +164,7 @@ Holds each user's basket as a list of product ids and quantities in Redis, behin
 - **Exposes:** `gRPC: Basket.GetBasket / UpdateBasket / DeleteBasket`
 - **Stores data in:** Redis: /basket/{userId}
 - **Calls / sends to:** Identity API (HTTP), Redis (Redis)
-- **Called by / receives from:** WebApp (storefront) (gRPC), RabbitMQ event bus (RabbitMQ)
+- **Called by / receives from:** WebApp (storefront) (gRPC), ClientApp (MAUI) (gRPC), RabbitMQ event bus (RabbitMQ)
 - **Evidence:**
   - [eShop › AppHost.cs:32](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/eShop.AppHost/AppHost.cs#L32) `AddDotnetProject("basket-api", "../Basket.API"`
   - [eShop › Program.cs:12](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Basket.API/Program.cs#L12) `app.MapGrpcService<BasketService>();`
@@ -139,14 +174,21 @@ Holds each user's basket as a list of product ids and quantities in Redis, behin
 
 Serves the product list, brands, types and pictures over a versioned HTTP API, and owns stock levels. It answers stock checks and reduces stock when an order is paid, using order events.
 
+> The write endpoints (POST and PUT /api/catalog/items, DELETE /api/catalog/items/{id}) are mapped without any authorization requirement, and Catalog API has no authentication set-up at all, unlike Ordering and Webhooks.
+
 - **Repo:** [eShop](https://github.com/dotnet/eShop/tree/913acea66708a59595351174cee9b29f37179d29)
-- **Exposes:** `GET /api/catalog/items`, `GET /api/catalog/items/by?ids=`, `GET /api/catalog/items/{id}/pic`, `Event: ProductPriceChangedIntegrationEvent`
+- **Exposes:** `GET /api/catalog/items`, `GET /api/catalog/items/by?ids=`, `GET /api/catalog/items/{id}/pic`, `POST /api/catalog/items`, `PUT /api/catalog/items (v1)`, `PUT /api/catalog/items/{id} (v2)`, `DELETE /api/catalog/items/{id}`, `Event: ProductPriceChangedIntegrationEvent`
 - **Stores data in:** PostgreSQL: catalogdb (pgvector image)
 - **Calls / sends to:** PostgreSQL (PostgreSQL), RabbitMQ event bus (RabbitMQ)
 - **Called by / receives from:** WebApp (storefront) (HTTP), Mobile BFF (YARP) (HTTP), RabbitMQ event bus (RabbitMQ)
 - **Evidence:**
   - [eShop › AppHost.cs:38](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/eShop.AppHost/AppHost.cs#L38) `AddDotnetProject("catalog-api", "../Catalog.API"`
   - [eShop › CatalogApi.cs:17](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Catalog.API/Apis/CatalogApi.cs#L17) `vApi.MapGroup("api/catalog")`
+  - [eShop › CatalogApi.cs:110](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Catalog.API/Apis/CatalogApi.cs#L110) `api.MapPost("/items", CreateItem)`
+  - [eShop › CatalogApi.cs:114](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Catalog.API/Apis/CatalogApi.cs#L114) `api.MapDelete("/items/{id:int}", DeleteItemById)`
+  - [eShop › Program.cs:22](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Ordering.API/Program.cs#L22) `.RequireAuthorization();`
+  - [eShop › CatalogApi.cs:100](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Catalog.API/Apis/CatalogApi.cs#L100) `v1.MapPut("/items", UpdateItemV1)`
+  - [eShop › CatalogApi.cs:105](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Catalog.API/Apis/CatalogApi.cs#L105) `v2.MapPut("/items/{id:int}", UpdateItem)`
 
 #### Ordering API
 
@@ -167,7 +209,7 @@ Creates orders and owns the order status. Status changes are driven by events fr
 
 Stores webhook subscriptions and POSTs a message to each subscriber's destination URL when an order is paid or shipped. It also subscribes to price-change events, but that handler does nothing yet.
 
-> Price-change webhooks are not implemented: the ProductPriceChanged handler just returns.
+> Price-change webhooks are not implemented: the ProductPriceChanged handler just returns. Registering a subscription first makes an OPTIONS request to the subscriber's check URL; the subscription is saved only if the reply has a success status and echoes the same `X-eshop-whtoken` header, and the check URL has the same scheme, host and port as the destination URL.
 
 - **Repo:** [eShop](https://github.com/dotnet/eShop/tree/913acea66708a59595351174cee9b29f37179d29)
 - **Exposes:** `POST /api/webhooks`, `GET /api/webhooks`
@@ -178,6 +220,10 @@ Stores webhook subscriptions and POSTs a message to each subscriber's destinatio
   - [eShop › AppHost.cs:56](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/eShop.AppHost/AppHost.cs#L56) `AddDotnetProject("webhooks-api", "../Webhooks.API"`
   - [eShop › WebHooksApi.cs:11](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Webhooks.API/Apis/WebHooksApi.cs#L11) `app.MapGroup("/api/webhooks")`
   - [eShop › ProductPriceChangedIntegrationEventHandler.cs:7](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Webhooks.API/IntegrationEvents/ProductPriceChangedIntegrationEventHandler.cs#L7) `return Task.CompletedTask;`
+  - [eShop › GrantUrlTesterService.cs:14](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Webhooks.API/Services/GrantUrlTesterService.cs#L14) `new HttpRequestMessage(HttpMethod.Options, url)`
+  - [eShop › WebHooksApi.cs:41](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Webhooks.API/Apis/WebHooksApi.cs#L41) `await grantUrlTester.TestGrantUrl(`
+  - [eShop › GrantUrlTesterService.cs:27](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Webhooks.API/Services/GrantUrlTesterService.cs#L27) `return response.IsSuccessStatusCode && tokenReceived == tokenExpected;`
+  - [eShop › GrantUrlTesterService.cs:42](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Webhooks.API/Services/GrantUrlTesterService.cs#L42) `return firstUrl.Scheme == secondUrl.Scheme &&`
 
 ### Background workers
 
@@ -211,11 +257,15 @@ Listens for orders whose stock is confirmed and publishes a payment succeeded or
 
 The message broker. All integration events go through one direct exchange, with the event's class name as the routing key.
 
+> Events can be lost. A consumer acknowledges every message even when its handler threw, and there is no dead-letter set-up. On the publishing side, an outbox event whose publish failed is marked failed and is not read again.
+
 - **Repo:** [eShop](https://github.com/dotnet/eShop/tree/913acea66708a59595351174cee9b29f37179d29)
 - **Exposes:** `Exchange: eshop_event_bus (direct)`
 - **Calls / sends to:** Basket API (RabbitMQ), Catalog API (RabbitMQ), Ordering API (RabbitMQ), Payment processor (RabbitMQ), WebApp (storefront) (RabbitMQ), Webhooks API (RabbitMQ)
 - **Called by / receives from:** Ordering API (RabbitMQ), Catalog API (RabbitMQ), Order processor (RabbitMQ), Payment processor (RabbitMQ)
 - **Evidence:**
+  - [eShop › RabbitMQEventBus.cs:177](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/EventBusRabbitMQ/RabbitMQEventBus.cs#L177) `// Even on exception we take the message off the queue.`
+  - [eShop › RabbitMQEventBus.cs:180](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/EventBusRabbitMQ/RabbitMQEventBus.cs#L180) `await _consumerChannel.BasicAckAsync(eventArgs.DeliveryTag`
   - [eShop › AppHost.cs:10](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/eShop.AppHost/AppHost.cs#L10) `builder.AddRabbitMQ("eventbus")`
   - [eShop › RabbitMQEventBus.cs:20](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/EventBusRabbitMQ/RabbitMQEventBus.cs#L20) `ExchangeName = "eshop_event_bus"`
   - [eShop › RabbitMQEventBus.cs:33](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/EventBusRabbitMQ/RabbitMQEventBus.cs#L33) `var routingKey = @event.GetType().Name;`
@@ -265,7 +315,10 @@ The Aspire application model. It declares every project and container above and 
 | Ordering API | Identity API | HTTP | Uses Identity as the authority for validating bearer tokens | [eShop › Extensions.cs:10](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Ordering.API/Extensions/Extensions.cs#L10) `builder.AddDefaultAuthentication();`<br>[eShop › AppHost.cs:46](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/eShop.AppHost/AppHost.cs#L46) `.WithEnvironment("Identity__Url", identityEndpoint);`<br>[eShop › AuthenticationExtensions.cs:38](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/eShop.ServiceDefaults/AuthenticationExtensions.cs#L38) `options.Authority = identityUrl;` |
 | Webhooks API | Identity API | HTTP | Uses Identity as the authority for validating bearer tokens | [eShop › Extensions.cs:5](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Webhooks.API/Extensions/Extensions.cs#L5) `builder.AddDefaultAuthentication();`<br>[eShop › AppHost.cs:59](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/eShop.AppHost/AppHost.cs#L59) `.WithEnvironment("Identity__Url", identityEndpoint);`<br>[eShop › AuthenticationExtensions.cs:38](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/eShop.ServiceDefaults/AuthenticationExtensions.cs#L38) `options.Authority = identityUrl;` |
 | Webhook client (sample) | Webhooks API | HTTP | Registers and lists webhook subscriptions | [eShop › Extensions.cs:19](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/WebhookClient/Extensions/Extensions.cs#L19) `new("http://webhooks-api")`<br>[eShop › WebHooksClient.cs:7](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/WebhookClient/Services/WebHooksClient.cs#L7) `client.PostAsJsonAsync("/api/webhooks", payload)`<br>[eShop › WebHooksApi.cs:35](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Webhooks.API/Apis/WebHooksApi.cs#L35) `api.MapPost("/"` |
-| Webhooks API | Webhook client (sample) | HTTP | POSTs the event to the destination URL a subscriber registered; the sample client receives it on /webhook-received | [eShop › WebhooksSender.cs:17](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Webhooks.API/Services/WebhooksSender.cs#L17) `RequestUri = new Uri(subs.DestUrl, UriKind.Absolute)`<br>[eShop › WebhooksSender.cs:18](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Webhooks.API/Services/WebhooksSender.cs#L18) `Method = HttpMethod.Post`<br>[eShop › WebhookEndpoints.cs:31](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/WebhookClient/Endpoints/WebhookEndpoints.cs#L31) `app.MapPost("/webhook-received"` |
+| Webhooks API | Webhook client (sample) | HTTP | Registration handshake: sends OPTIONS with an X-eshop-whtoken header to the subscriber's check URL and saves the subscription only on a success reply whose X-eshop-whtoken header matches the token sent (a blank token needs no echo) (the sample client answers on /check). Later POSTs the event to the destination URL a subscriber registered; the sample client receives it on /webhook-received | [eShop › GrantUrlTesterService.cs:14](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Webhooks.API/Services/GrantUrlTesterService.cs#L14) `new HttpRequestMessage(HttpMethod.Options, url)`<br>[eShop › GrantUrlTesterService.cs:27](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Webhooks.API/Services/GrantUrlTesterService.cs#L27) `response.IsSuccessStatusCode && tokenReceived == tokenExpected`<br>[eShop › WebHooksApi.cs:43](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Webhooks.API/Apis/WebHooksApi.cs#L43) `if (grantOk)`<br>[eShop › WebhookEndpoints.cs:16](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/WebhookClient/Endpoints/WebhookEndpoints.cs#L16) `app.MapMethods("/check", [HttpMethods.Options]`<br>[eShop › WebhooksSender.cs:17](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Webhooks.API/Services/WebhooksSender.cs#L17) `RequestUri = new Uri(subs.DestUrl, UriKind.Absolute)`<br>[eShop › WebhooksSender.cs:18](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Webhooks.API/Services/WebhooksSender.cs#L18) `Method = HttpMethod.Post`<br>[eShop › WebhookEndpoints.cs:31](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/WebhookClient/Endpoints/WebhookEndpoints.cs#L31) `app.MapPost("/webhook-received"` |
+| ClientApp (MAUI) | Mobile BFF (YARP) | HTTP | Reads the catalogue and creates and lists orders (api/catalog and api/orders with an api-version query parameter). The endpoints are settings that default to port 11632, the port HybridApp names as its Mobile BFF host; the AppHost does not fix the BFF's port. | [eShop › SettingsViewModel.cs:58](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/ClientApp/ViewModels/SettingsViewModel.cs#L58) `$"http://{_baseAddress}:11632"`<br>[eShop › CatalogService.cs:38](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/ClientApp/Services/Catalog/CatalogService.cs#L38) `$"{ApiUrlBase}/items?PageSize=100&{ApiVersion}"`<br>[eShop › OrderService.cs:37](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/ClientApp/Services/Order/OrderService.cs#L37) `UriHelper.CombineUri(_settingsService.GatewayOrdersEndpointBase, ApiUrlBase)`<br>[eShop › Extensions.cs:146](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/eShop.AppHost/Extensions.cs#L146) `yarp.AddRoute("/api/orders/{*any}"` |
+| HybridApp (MAUI Blazor) | Mobile BFF (YARP) | HTTP | Reads catalogue items, brands, types and pictures (api/catalog with api-version=2.0) | [eShop › MauiProgram.cs:9](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/HybridApp/MauiProgram.cs#L9) `internal static string MobileBffHost`<br>[eShop › MauiProgram.cs:30](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/HybridApp/MauiProgram.cs#L30) `AddHttpClient<CatalogService>(o => o.BaseAddress = new(MobileBffHost))`<br>[eShop › Extensions.cs:142](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/eShop.AppHost/Extensions.cs#L142) `yarp.AddRoute("/api/catalog/{*any}", catalogCluster)` |
+| ClientApp (MAUI) | Basket API | gRPC | Reads, updates and deletes the signed-in user's basket, bypassing the Mobile BFF | [eShop › BasketService.cs:125](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/ClientApp/Services/Basket/BasketService.cs#L125) `GrpcChannel.ForAddress(_settingsService.GatewayBasketEndpointBase)`<br>[eShop › SettingsViewModel.cs:63](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/ClientApp/ViewModels/SettingsViewModel.cs#L63) `$"http://{_baseAddress}:5221"`<br>[eShop › launchSettings.json:6](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Basket.API/Properties/launchSettings.json#L6) `"applicationUrl": "http://localhost:5221"`<br>[eShop › Program.cs:12](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Basket.API/Program.cs#L12) `app.MapGrpcService<BasketService>();` |
 | Basket API | Redis | Redis | Stores each basket as a JSON string under /basket/{userId} | [eShop › Extensions.cs:14](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Basket.API/Extensions/Extensions.cs#L14) `builder.AddRedisClient("redis");`<br>[eShop › AppHost.cs:33](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/eShop.AppHost/AppHost.cs#L33) `.WithReference(redis)`<br>[eShop › RedisBasketRepository.cs:37](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Basket.API/Repositories/RedisBasketRepository.cs#L37) `_database.StringSetAsync(GetBasketKey(basket.BuyerId), json)` |
 | Catalog API | PostgreSQL | PostgreSQL | Reads and writes catalog data in catalogdb | [eShop › Extensions.cs:15](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Catalog.API/Extensions/Extensions.cs#L15) `AddNpgsqlDbContext<CatalogContext>("catalogdb"`<br>[eShop › AppHost.cs:40](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/eShop.AppHost/AppHost.cs#L40) `.WithReference(catalogDb);` |
 | Ordering API | PostgreSQL | PostgreSQL | Reads and writes orders in orderingdb | [eShop › Extensions.cs:17](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Ordering.API/Extensions/Extensions.cs#L17) `GetConnectionString("orderingdb")`<br>[eShop › AppHost.cs:44](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/eShop.AppHost/AppHost.cs#L44) `.WithReference(orderDb).WaitFor(orderDb)` |
@@ -383,7 +436,7 @@ sequenceDiagram
   participant n_webhooks_api as Webhooks API
   n_webapp->>n_ordering_api: Place the order
   n_ordering_api->>n_ordering_api: Create the order as Submitted and queue OrderStarted and Submitted events
-  n_webapp->>n_basket_api: Delete the basket after the order call returns
+  n_webapp->>n_basket_api: Delete the basket (even if the order call failed)
   n_ordering_api-)n_rabbitmq: Publish OrderStarted
   n_rabbitmq-)n_basket_api: Basket deletes the buyer's basket (again)
   n_ordering_api-)n_rabbitmq: Publish OrderStatusChangedToSubmitted
@@ -413,8 +466,9 @@ sequenceDiagram
    - [eShop › Order.cs:57](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Ordering.Domain/AggregatesModel/OrderAggregate/Order.cs#L57) `OrderStatus = OrderStatus.Submitted;`
    - [eShop › ValidateOrAddBuyerAggregateWhenOrderStartedDomainEventHandler.cs:51](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Ordering.API/Application/DomainEventHandlers/ValidateOrAddBuyerAggregateWhenOrderStartedDomainEventHandler.cs#L51) `await _orderingIntegrationEventService.AddAndSaveEventAsync(integrationEvent);`
    - [eShop › TransactionBehavior.cs:52](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Ordering.API/Application/Behaviors/TransactionBehavior.cs#L52) `await _orderingIntegrationEventService.PublishEventsThroughEventBusAsync(transactionId);`
-3. **Delete the basket after the order call returns** (WebApp (storefront) → Basket API, gRPC). Ordering commits and publishes its events inside the same request, so the OrderStarted message below can be sent before this call is made; the diagram lists the WebApp call first.
+3. **Delete the basket (even if the order call failed)** (WebApp (storefront) → Basket API, gRPC). WebApp does not look at the order call's response before this call: `SendAsync` does not throw on an error status, so a rejected order still empties the basket. Ordering commits and publishes its events inside the same request, so the OrderStarted message below can be sent before this call is made; the diagram lists the WebApp call first.
    - Call: `rpc Basket/DeleteBasket`
+   - [eShop › OrderingService.cs:17](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/WebApp/Services/OrderingService.cs#L17) `return httpClient.SendAsync(requestMessage);`
    - [eShop › BasketState.cs:108](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/WebApp/Services/BasketState.cs#L108) `await DeleteBasketAsync();`
    - [eShop › BasketService.cs:17](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/WebApp/Services/BasketService.cs#L17) `basketClient.DeleteBasketAsync(new DeleteBasketRequest())`
 4. **Publish OrderStarted** (Ordering API → RabbitMQ event bus, RabbitMQ). The routing key is the event's class name. The message also carries `Id` and `CreationDate` from the base record.
@@ -506,6 +560,14 @@ sequenceDiagram
 - Every event is published to one direct exchange and the routing key is the event class name, so a consumer subscribes by the class name of the event.
   - [eShop › RabbitMQEventBus.cs:33](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/EventBusRabbitMQ/RabbitMQEventBus.cs#L33) `var routingKey = @event.GetType().Name;`
   - [eShop › RabbitMQEventBus.cs:47](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/EventBusRabbitMQ/RabbitMQEventBus.cs#L47) `await channel.ExchangeDeclareAsync(`
+- A consumer acknowledges every message, including when its handler threw: the exception is logged and the message is removed from the queue. A code comment says a real app should use a dead-letter exchange. A failed handler therefore loses that event.
+  - [eShop › RabbitMQEventBus.cs:172](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/EventBusRabbitMQ/RabbitMQEventBus.cs#L172) `logger.LogWarning(ex, "Error Processing message`
+  - [eShop › RabbitMQEventBus.cs:177](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/EventBusRabbitMQ/RabbitMQEventBus.cs#L177) `// Even on exception we take the message off the queue.`
+  - [eShop › RabbitMQEventBus.cs:180](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/EventBusRabbitMQ/RabbitMQEventBus.cs#L180) `await _consumerChannel.BasicAckAsync(eventArgs.DeliveryTag`
+- If publishing an outbox event fails, Ordering and Catalog mark it as `PublishedFailed` and carry on. The only read of pending events takes entries still `NotPublished` for the current transaction, so a failed event is not published again by this code.
+  - [eShop › OrderingIntegrationEventService.cs:31](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Ordering.API/Application/IntegrationEvents/OrderingIntegrationEventService.cs#L31) `await _eventLogService.MarkEventAsFailedAsync(logEvt.EventId);`
+  - [eShop › CatalogIntegrationEventService.cs:24](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Catalog.API/IntegrationEvents/CatalogIntegrationEventService.cs#L24) `await integrationEventLogService.MarkEventAsFailedAsync(evt.Id);`
+  - [eShop › IntegrationEventLogService.cs:22](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/IntegrationEventLogEF/Services/IntegrationEventLogService.cs#L22) `e.TransactionId == transactionId && e.State == EventStateEnum.NotPublished`
 - Ordering and Catalog save the event to an integration-event log in the same database transaction as the data change, then publish it (a transactional outbox).
   - [eShop › OrderingIntegrationEventService.cs:40](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Ordering.API/Application/IntegrationEvents/OrderingIntegrationEventService.cs#L40) `await _eventLogService.SaveEventAsync(evt, _orderingContext.GetCurrentTransaction());`
   - [eShop › CatalogIntegrationEventService.cs:38](https://github.com/dotnet/eShop/blob/913acea66708a59595351174cee9b29f37179d29/src/Catalog.API/IntegrationEvents/CatalogIntegrationEventService.cs#L38) `await integrationEventLogService.SaveEventAsync(evt, catalogContext.Database.CurrentTransaction);`

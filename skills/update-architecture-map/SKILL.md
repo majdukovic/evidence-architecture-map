@@ -17,10 +17,11 @@ ending your turn.
 
 ## 1. Baseline
 
-Fetch the cited repos if the user agrees (`git -C <repo> fetch -q origin`; the list is in `pins.json`), then:
+Fetch the cited repos if the user agrees (`git -C <repo> fetch -q origin`; the list is in `pins.json`); in an unattended
+run, do not fetch unless the prompt says so. Then:
 
 ```bash
-node <build-skill-dir>/scripts/verify.js <map-dir>     # what has drifted already
+node <build-skill-dir>/scripts/verify.js <map-dir> [--repos <dir>]     # what has drifted already; --repos if map.json's reposDir is wrong here
 ```
 
 ## 2. Make the change
@@ -37,9 +38,10 @@ node <build-skill-dir>/scripts/verify.js <map-dir>     # what has drifted alread
 
 ## 3. Independent review (do not skip)
 
-Give the new and changed items to a fresh agent with `references/review-brief.md`. It did not write them and must
+Give the new and changed items to a fresh agent that can run `git` (not a read-only agent without a shell) with
+`references/review-brief.md`, and wait for its result. It did not write them and must
 decide from code alone whether each cited line proves the statement. Apply its corrections. Add rows to
-`review/verification.md` and drops to `review/dropped.md`.
+`<map-dir>/review/verification.md` and drops to `<map-dir>/review/dropped.md`.
 
 ## 4. Build and verify
 

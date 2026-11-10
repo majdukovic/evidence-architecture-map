@@ -139,7 +139,7 @@
           "target": "/pets/visits?petId=1,2"
         },
         "payloadNote": "no-body",
-        "description": "After the owner arrives the gateway joins the pet ids with commas and makes one call, wrapped in a circuit breaker; if it fails, an empty visits list is used.",
+        "description": "After the owner arrives the gateway joins the pet ids with commas and makes one call, wrapped in a circuit breaker; if it fails, an empty visits list is used. The gateway's only time limit is a 10-second default for its circuit breakers; this breaker uses it, so a slow visits service gives the same empty list, with no error on the page.",
         "evidence": [
           {
             "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/ApiGatewayController.java:58",
@@ -160,6 +160,10 @@
           {
             "ref": "spring-petclinic-microservices:spring-petclinic-visits-service/src/main/java/org/springframework/samples/petclinic/visits/web/VisitResource.java:72",
             "quote": "@GetMapping(\"pets/visits\")"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java:88",
+            "quote": "timeoutDuration(Duration.ofSeconds(10))"
           }
         ]
       },
@@ -796,13 +800,42 @@
           {
             "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:57",
             "quote": "@PostMapping(\"/chatclient\")"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:45",
+            "quote": "CircuitBreaker=name=genaiCircuitBreaker,fallbackUri=/fallback"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java:88",
+            "quote": "timeoutDuration(Duration.ofSeconds(10))"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/FallbackController.java:15",
+            "quote": "HttpStatus.SC_SERVICE_UNAVAILABLE"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:42",
+            "quote": "Path=/api/genai/**"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:44",
+            "quote": "StripPrefix=2"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:14",
+            "quote": "fallbackUri: forward:/fallback"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/components/ChatBox.js:56",
+            "quote": "content: 'Chat is currently unavailable'"
           }
         ],
         "request": "\"How many owners are there?\"",
         "requestSchema": {
           "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:58",
           "quote": "exchange(@RequestBody String query)"
-        }
+        },
+        "description": "The default <code>CircuitBreaker</code> filter (fallback <code>forward:/fallback</code>) applies to every route, and this route adds its own <code>genaiCircuitBreaker</code> (fallback <code>/fallback</code>); how the two combine is gateway behaviour not read here. The only time limit configured is the 10-second default, so a slower LLM answer ends in the 503 from <code>/fallback</code>, which the chat box shows as its own \"Chat is currently unavailable\" message."
       },
       {
         "from": "genai-service",
@@ -865,5 +898,774 @@
       }
     ],
     "tests": []
+  },
+  {
+    "id": "owner-create-edit",
+    "title": "Register or edit an owner",
+    "tagline": "Owner form to database",
+    "featured": true,
+    "summary": "The <b>Register owner</b> and <b>Edit Owner</b> pages use one form component. A new owner is <code>POST</code>ed, an existing one <code>PUT</code>, both through the gateway route <code>/api/customer/**</code> to customers-service.",
+    "actors": [
+      "browser",
+      "api-gateway",
+      "customers-service",
+      "customers-db"
+    ],
+    "steps": [
+      {
+        "from": "browser",
+        "to": "api-gateway",
+        "kind": "req",
+        "label": "Submit the new owner form",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "POST",
+          "target": "/api/customer/owners"
+        },
+        "request": {
+          "firstName": "Jane",
+          "lastName": "Doe",
+          "address": "1 Main St",
+          "city": "Dublin",
+          "telephone": "6085551023"
+        },
+        "description": "Opened from the \"Register owner\" menu entry (route /owners/new). The telephone field only accepts up to 12 digits.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerFormPage.js:49",
+            "quote": "request('/api/customer/owners', { ...jsonRequest('POST', payload)"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerFormPage.js:35",
+            "quote": "firstName: owner.firstName.trim()"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerFormPage.js:96",
+            "quote": "pattern=\"[0-9]{1,12}\""
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/router.js:27",
+            "quote": "path: '/owners/new'"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/components/AppNavigation.js:13",
+            "quote": "to=\"/owners/new\""
+          }
+        ]
+      },
+      {
+        "from": "api-gateway",
+        "to": "customers-service",
+        "kind": "req",
+        "label": "Forward by route, /api/customer prefix stripped",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "POST",
+          "target": "/owners"
+        },
+        "request": {
+          "firstName": "Jane",
+          "lastName": "Doe",
+          "address": "1 Main St",
+          "city": "Dublin",
+          "telephone": "6085551023"
+        },
+        "requestSchema": {
+          "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerRequest.java:6",
+          "quote": "public record OwnerRequest(@NotBlank String firstName"
+        },
+        "description": "All five fields must be non-blank and the telephone at most 12 digits, or the request is rejected. The gateway is configured with a default Retry filter for POST on 503 (retries: 1).",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:34",
+            "quote": "uri: lb://customers-service"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:36",
+            "quote": "Path=/api/customer/**"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:38",
+            "quote": "StripPrefix=2"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java:57",
+            "quote": "@PostMapping"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java:59",
+            "quote": "createOwner(@Valid @RequestBody OwnerRequest ownerRequest)"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerRequest.java:11",
+            "quote": "@Digits(fraction = 0, integer = 12)"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:19",
+            "quote": "methods: POST"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:17",
+            "quote": "retries: 1"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:18",
+            "quote": "statuses: SERVICE_UNAVAILABLE"
+          }
+        ]
+      },
+      {
+        "from": "customers-service",
+        "to": "customers-db",
+        "kind": "req",
+        "label": "Insert the owner",
+        "protocol": "JDBC",
+        "payloadNote": "sql",
+        "description": "The request is copied onto a new Owner entity and saved.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java:60",
+            "quote": "ownerEntityMapper.map(new Owner(), ownerRequest)"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java:61",
+            "quote": "return ownerRepository.save(owner);"
+          }
+        ]
+      },
+      {
+        "from": "customers-service",
+        "to": "api-gateway",
+        "kind": "res",
+        "label": "201 Created with the saved owner",
+        "protocol": "HTTP",
+        "response": {
+          "id": 11,
+          "firstName": "Jane",
+          "lastName": "Doe",
+          "address": "1 Main St",
+          "city": "Dublin",
+          "telephone": "6085551023",
+          "pets": []
+        },
+        "responseSchema": {
+          "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/model/Owner.java:39",
+          "quote": "public class Owner {"
+        },
+        "description": "The route returns the owner JSON to the browser.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java:58",
+            "quote": "@ResponseStatus(HttpStatus.CREATED)"
+          }
+        ]
+      },
+      {
+        "from": "api-gateway",
+        "to": "browser",
+        "kind": "res",
+        "label": "201, then back to the owners list",
+        "protocol": "HTTP",
+        "noPayload": true,
+        "description": "The page ignores the body and navigates to the owners list.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerFormPage.js:50",
+            "quote": "await router.push('/owners')"
+          }
+        ]
+      },
+      {
+        "from": "browser",
+        "to": "api-gateway",
+        "kind": "req",
+        "label": "Submit the edit owner form",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "PUT",
+          "target": "/api/customer/owners/{ownerId}"
+        },
+        "request": {
+          "firstName": "Jane",
+          "lastName": "Doe",
+          "address": "1 Main St",
+          "city": "Dublin",
+          "telephone": "6085551023"
+        },
+        "description": "The Edit Owner button on the owner details page opens /owners/:ownerId/edit, which first loads the current values with GET /api/customer/owners/{ownerId} and then sends the same five fields. (The response steps of the pre-load calls are left out.)",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerFormPage.js:46",
+            "quote": "jsonRequest('PUT', payload)"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerFormPage.js:23",
+            "quote": "request(`/api/customer/owners/${ownerId}`, { signal })"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/router.js:33",
+            "quote": "path: '/owners/:ownerId/edit'"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerDetailsPage.js:41",
+            "quote": "'/owners/' + owner.id + '/edit'"
+          }
+        ]
+      },
+      {
+        "from": "api-gateway",
+        "to": "customers-service",
+        "kind": "req",
+        "label": "Forward by route, prefix stripped",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "PUT",
+          "target": "/owners/{ownerId}"
+        },
+        "request": {
+          "firstName": "Jane",
+          "lastName": "Doe",
+          "address": "1 Main St",
+          "city": "Dublin",
+          "telephone": "6085551023"
+        },
+        "requestSchema": {
+          "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerRequest.java:6",
+          "quote": "public record OwnerRequest(@NotBlank String firstName"
+        },
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:34",
+            "quote": "uri: lb://customers-service"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:36",
+            "quote": "Path=/api/customer/**"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:38",
+            "quote": "StripPrefix=2"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java:83",
+            "quote": "@PutMapping(value = \"/{ownerId}\")"
+          }
+        ]
+      },
+      {
+        "from": "customers-service",
+        "to": "customers-db",
+        "kind": "req",
+        "label": "Load the owner and save the changes",
+        "protocol": "JDBC",
+        "payloadNote": "sql",
+        "description": "An unknown owner id ends in a not-found error and nothing is saved.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java:86",
+            "quote": "new ResourceNotFoundException(\"Owner \" + ownerId + \" not found\")"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java:90",
+            "quote": "ownerRepository.save(ownerModel);"
+          }
+        ]
+      },
+      {
+        "from": "customers-service",
+        "to": "api-gateway",
+        "kind": "res",
+        "label": "204 No Content",
+        "protocol": "HTTP",
+        "noPayload": true,
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/OwnerResource.java:84",
+            "quote": "@ResponseStatus(HttpStatus.NO_CONTENT)"
+          }
+        ]
+      },
+      {
+        "from": "api-gateway",
+        "to": "browser",
+        "kind": "res",
+        "label": "204, then back to the owner details page",
+        "protocol": "HTTP",
+        "noPayload": true,
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerFormPage.js:47",
+            "quote": "router.push(`/owners/details/${ownerId}`)"
+          }
+        ]
+      }
+    ],
+    "tests": []
+  },
+  {
+    "id": "pet-create-edit",
+    "title": "Add or edit a pet",
+    "tagline": "Pet form to database",
+    "featured": true,
+    "summary": "From the owner details page, <b>Add New Pet</b> and the pet's <b>Edit Pet</b> link open one pet form. Both go through <code>/api/customer/**</code> to customers-service, which attaches the pet to its owner.",
+    "actors": [
+      "browser",
+      "api-gateway",
+      "customers-service",
+      "customers-db"
+    ],
+    "steps": [
+      {
+        "from": "browser",
+        "to": "api-gateway",
+        "kind": "req",
+        "label": "Load the pet types for the form",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "GET",
+          "target": "/api/customer/petTypes"
+        },
+        "noPayload": true,
+        "description": "Add New Pet (route /owners/:ownerId/new-pet) also loads the owner to show the name: GET /api/customer/owners/{ownerId}.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js:24",
+            "quote": "request('/api/customer/petTypes'"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js:35",
+            "quote": "requireObject(await request(`/api/customer/owners/${ownerId}`"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/router.js:36",
+            "quote": "path: '/owners/:ownerId/new-pet'"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerDetailsPage.js:46",
+            "quote": "'/owners/' + owner.id + '/new-pet'"
+          }
+        ]
+      },
+      {
+        "from": "api-gateway",
+        "to": "customers-service",
+        "kind": "req",
+        "label": "Forward by route, prefix stripped",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "GET",
+          "target": "/petTypes"
+        },
+        "noPayload": true,
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:34",
+            "quote": "uri: lb://customers-service"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:36",
+            "quote": "Path=/api/customer/**"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:38",
+            "quote": "StripPrefix=2"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java:50",
+            "quote": "@GetMapping(\"/petTypes\")"
+          }
+        ]
+      },
+      {
+        "from": "browser",
+        "to": "api-gateway",
+        "kind": "req",
+        "label": "Submit the new pet form",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "POST",
+          "target": "/api/customer/owners/{ownerId}/pets"
+        },
+        "request": {
+          "name": "Basil",
+          "birthDate": "2020-01-01",
+          "typeId": 6
+        },
+        "description": "The form sends the pet type as an id, not a name.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js:48",
+            "quote": "name: pet.name.trim()"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js:49",
+            "quote": "birthDate: pet.birthDate"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js:50",
+            "quote": "typeId: Number(pet.typeId)"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js:53",
+            "quote": "const url = `/api/customer/owners/${ownerId}/pets${petPath}`"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js:58",
+            "quote": "jsonRequest(petId ? 'PUT' : 'POST', payload)"
+          }
+        ]
+      },
+      {
+        "from": "api-gateway",
+        "to": "customers-service",
+        "kind": "req",
+        "label": "Forward by route, prefix stripped",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "POST",
+          "target": "/owners/{ownerId}/pets"
+        },
+        "request": {
+          "name": "Basil",
+          "birthDate": "2020-01-01",
+          "typeId": 6
+        },
+        "requestSchema": {
+          "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetRequest.java:27",
+          "quote": "record PetRequest("
+        },
+        "description": "A birth date in the future is rejected with 400 (bean validation). The gateway is configured with a default Retry filter for POST on 503 (retries: 1).",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:34",
+            "quote": "uri: lb://customers-service"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:36",
+            "quote": "Path=/api/customer/**"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:38",
+            "quote": "StripPrefix=2"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java:55",
+            "quote": "@PostMapping(\"/owners/{ownerId}/pets\")"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetRequest.java:29",
+            "quote": "@PastOrPresent Date birthDate"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:19",
+            "quote": "methods: POST"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/test/java/org/springframework/samples/petclinic/customers/web/PetResourceTest.java:94",
+            "quote": ".andExpect(status().isBadRequest());"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:17",
+            "quote": "retries: 1"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:18",
+            "quote": "statuses: SERVICE_UNAVAILABLE"
+          }
+        ]
+      },
+      {
+        "from": "customers-service",
+        "to": "customers-db",
+        "kind": "req",
+        "label": "Find the owner, add the pet, save",
+        "protocol": "JDBC",
+        "payloadNote": "sql",
+        "description": "An unknown owner id ends in a not-found error. The pet type id is looked up and set if it exists.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java:61",
+            "quote": "ownerRepository.findById(ownerId)"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java:65",
+            "quote": "owner.addPet(pet);"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java:82",
+            "quote": "petRepository.findPetTypeById(petRequest.typeId())"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java:86",
+            "quote": "return petRepository.save(pet);"
+          }
+        ]
+      },
+      {
+        "from": "customers-service",
+        "to": "api-gateway",
+        "kind": "res",
+        "label": "201 Created with the saved pet",
+        "protocol": "HTTP",
+        "response": {
+          "id": 14,
+          "name": "Basil",
+          "birthDate": "<date: java.util.Date, format set by Jackson>",
+          "type": {
+            "id": 6,
+            "name": "hamster"
+          }
+        },
+        "responseSchema": {
+          "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/model/Pet.java:36",
+          "quote": "public class Pet {"
+        },
+        "description": "The owner is left out of the JSON.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java:56",
+            "quote": "@ResponseStatus(HttpStatus.CREATED)"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/model/Pet.java:54",
+            "quote": "@JsonIgnore"
+          }
+        ]
+      },
+      {
+        "from": "api-gateway",
+        "to": "browser",
+        "kind": "res",
+        "label": "201, then back to the owner details page",
+        "protocol": "HTTP",
+        "noPayload": true,
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js:59",
+            "quote": "router.push(`/owners/details/${ownerId}`)"
+          }
+        ]
+      },
+      {
+        "from": "browser",
+        "to": "api-gateway",
+        "kind": "req",
+        "label": "Open Edit Pet: load the pet",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "GET",
+          "target": "/api/customer/owners/{ownerId}/pets/{petId}"
+        },
+        "noPayload": true,
+        "description": "The pet name on the owner details page links to /owners/:ownerId/pets/:petId, the same form in edit mode. Edit mode first loads /petTypes (as above), then the pet; the browser-side responses of these loads are left out.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js:27",
+            "quote": "request(`/api/customer/owners/${ownerId}/pets/${petId}`"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/router.js:39",
+            "quote": "path: '/owners/:ownerId/pets/:petId'"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/OwnerDetailsPage.js:61",
+            "quote": "'/owners/' + owner.id + '/pets/' + pet.id"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js:24",
+            "quote": "request('/api/customer/petTypes'"
+          }
+        ]
+      },
+      {
+        "from": "api-gateway",
+        "to": "customers-service",
+        "kind": "req",
+        "label": "Forward by route, prefix stripped",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "GET",
+          "target": "/owners/*/pets/{petId}"
+        },
+        "noPayload": true,
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:34",
+            "quote": "uri: lb://customers-service"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:36",
+            "quote": "Path=/api/customer/**"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:38",
+            "quote": "StripPrefix=2"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java:89",
+            "quote": "@GetMapping(\"owners/*/pets/{petId}\")"
+          }
+        ],
+        "description": "The gateway strips <code>/api/customer</code> and forwards the real owner id; <code>*</code> is the Spring mapping pattern, so the owner id is not used and the pet is found by its own id."
+      },
+      {
+        "from": "customers-service",
+        "to": "api-gateway",
+        "kind": "res",
+        "label": "Pet with its owner's name",
+        "protocol": "HTTP",
+        "response": {
+          "id": 14,
+          "name": "Basil",
+          "owner": "Jane Doe",
+          "birthDate": "<date: java.util.Date, format set by Jackson>",
+          "type": {
+            "id": 6,
+            "name": "hamster"
+          }
+        },
+        "responseSchema": {
+          "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetDetails.java:28",
+          "quote": "record PetDetails("
+        },
+        "description": "The owner is a single string, first and last name.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java:89",
+            "quote": "@GetMapping(\"owners/*/pets/{petId}\")"
+          }
+        ]
+      },
+      {
+        "from": "browser",
+        "to": "api-gateway",
+        "kind": "req",
+        "label": "Submit the edit pet form",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "PUT",
+          "target": "/api/customer/owners/{ownerId}/pets/{petId}"
+        },
+        "request": {
+          "name": "Basil",
+          "birthDate": "2020-01-01",
+          "typeId": 6
+        },
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js:58",
+            "quote": "jsonRequest(petId ? 'PUT' : 'POST', payload)"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js:52",
+            "quote": "const petPath = petId ? `/${petId}` : '';"
+          }
+        ]
+      },
+      {
+        "from": "api-gateway",
+        "to": "customers-service",
+        "kind": "req",
+        "label": "Forward by route, prefix stripped",
+        "protocol": "HTTP",
+        "call": {
+          "verb": "PUT",
+          "target": "/owners/*/pets/{petId}"
+        },
+        "request": {
+          "name": "Basil",
+          "birthDate": "2020-01-01",
+          "typeId": 6
+        },
+        "requestSchema": {
+          "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetRequest.java:27",
+          "quote": "record PetRequest("
+        },
+        "description": "The owner id in the path is a wildcard and is not used; the pet is found by its own id.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:34",
+            "quote": "uri: lb://customers-service"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:36",
+            "quote": "Path=/api/customer/**"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/application.yml:38",
+            "quote": "StripPrefix=2"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java:69",
+            "quote": "@PutMapping(\"/owners/*/pets/{petId}\")"
+          }
+        ]
+      },
+      {
+        "from": "customers-service",
+        "to": "customers-db",
+        "kind": "req",
+        "label": "Load the pet and save the changes",
+        "protocol": "JDBC",
+        "payloadNote": "sql",
+        "description": "An unknown pet id ends in a not-found error and nothing is saved.",
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java:73",
+            "quote": "Pet pet = findPetById(petId);"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java:98",
+            "quote": "new ResourceNotFoundException(\"Pet \" + petId + \" not found\")"
+          },
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java:86",
+            "quote": "return petRepository.save(pet);"
+          }
+        ]
+      },
+      {
+        "from": "customers-service",
+        "to": "api-gateway",
+        "kind": "res",
+        "label": "204 No Content",
+        "protocol": "HTTP",
+        "noPayload": true,
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/main/java/org/springframework/samples/petclinic/customers/web/PetResource.java:70",
+            "quote": "@ResponseStatus(HttpStatus.NO_CONTENT)"
+          }
+        ]
+      },
+      {
+        "from": "api-gateway",
+        "to": "browser",
+        "kind": "res",
+        "label": "204, then back to the owner details page",
+        "protocol": "HTTP",
+        "noPayload": true,
+        "evidence": [
+          {
+            "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/pages/PetFormPage.js:59",
+            "quote": "router.push(`/owners/details/${ownerId}`)"
+          }
+        ]
+      }
+    ],
+    "tests": [
+      {
+        "name": "PetResourceTest.shouldCreatePetWithoutBodyId",
+        "why": "POST /owners/2/pets returns 201 with the new pet",
+        "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/test/java/org/springframework/samples/petclinic/customers/web/PetResourceTest.java:138",
+        "quote": "mvc.perform(post(\"/owners/2/pets\")"
+      },
+      {
+        "name": "PetResourceTest.shouldUpdatePetUsingPathIdWithoutBodyId",
+        "why": "PUT /owners/2/pets/2 returns 204 and saves the new name",
+        "ref": "spring-petclinic-microservices:spring-petclinic-customers-service/src/test/java/org/springframework/samples/petclinic/customers/web/PetResourceTest.java:103",
+        "quote": "mvc.perform(put(\"/owners/2/pets/2\")"
+      }
+    ]
   }
 ]

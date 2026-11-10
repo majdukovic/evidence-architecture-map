@@ -28,7 +28,7 @@ Every component, connection, flow step and fact needs at least one evidence item
 
 - `ref` is `repo:path:line`. `repo` is a key under `map.json` `repos` (or simply the repo's folder name under
   `reposDir`); `path` is relative to the repo root; `line` is 1-based, on the repo's **default branch**.
-- `quote` is an exact substring of that line, 6 to 120 characters (aim for 10 to 60). Pick the part that proves
+- `quote` is an exact substring of that line, 4 to 120 characters (aim for 10 to 60). Pick the part that proves
   the claim, not boilerplate: `basicRequest.post(uri"$paymentsUrl/charges")`, not `def charge(`.
 - `verify.js` accepts the quote on the cited line or up to two lines away. Anything else fails.
 
@@ -89,6 +89,11 @@ Every component, connection, flow step and fact needs at least one evidence item
 - `exposes` / `stores`: short tags (endpoints, topics, queues, tables, buckets).
 - `condition`: for a component that exists only in some setups (an optional profile, a feature flag, a deployment
   variant), say when, e.g. `"Only with the alloydb kustomize component"`. Drawn dashed. Also valid on connections.
+- **Modular monolith** (one deployable with modules): components can be the modules a newcomer needs (often 5 to 12),
+  connected `in-process` with the call site as evidence. Use layers that fit, for example `ui`, `api`, `modules`,
+  `data`, `external`, instead of the default `services`.
+- **A caller outside the code** (a person following a link in an email, a partner system): add it as a component in
+  the `people` or `external` layer, with evidence of what reaches it (the line that builds the link or the webhook).
 - `gateway: true` marks a router (API gateway, ingress, BFF). A flow step with no direct connection is drawn
   through it on the map.
 - `seqLabel`: shorter name for sequence diagrams.
@@ -111,6 +116,8 @@ simple HTML (`b`, `i`, `code`, `a`, `br`, `p`, `ul`, `li`). The build rejects sc
 ```
 
 - Direction is the direction of the call or message: the caller or publisher is `from`.
+- One entry per `from` + `to` + `protocol`; the build rejects duplicates. When one component makes several calls to
+  another over the same protocol, describe them together in `what` and give evidence for each.
 - `protocol` is short free text: `HTTP`, `HTTPS`, `gRPC`, `GraphQL`, `Kafka`, `RabbitMQ`, `SQS`, `JDBC`, `Redis`, `S3`, `SMTP`,
   `WebSocket`, `in-process` (an embedded store or library).
 - `condition`: when the connection exists only in some setups (a profile, a flag, an optional component). Drawn dashed.

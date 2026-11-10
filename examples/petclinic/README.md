@@ -11,16 +11,19 @@ Built by an unattended `claude -p` run that had only this plugin and the prompt 
 
 | | |
 |---|---|
-| Map | 17 components, 35 connections, 5 flows (32 steps), 31 facts, across 2 repos |
-| Evidence | 316 references, all OK on `main` |
+| Map | 17 components, 35 connections, 7 flows (57 steps), 34 facts, across 2 repos |
+| Evidence | 452 references, all OK on `main` |
 | CoVe | 40 neutral questions answered by agents that never saw the draft |
 | Adversarial review | 21 findings, applied or narrowed (for example, vets caching is off under docker-compose) |
 | Independent spot-check (30 sampled claims) | 28 correct, 2 minor, 0 wrong; the 2 minor ones were then fixed |
-| Cost | about USD 6 |
+| Update run (`update-architecture-map`, unattended) | 4 of the 5 gaps the first spot-check found were added; how the admin server finds services was dropped (it is library behaviour outside these repos) |
+| Spot-check of the 23 added statements | 22 correct, 1 minor, 0 wrong; the minor one was then fixed |
+| Cost | about USD 8 across the build and the update |
 
-Things the spot-check said a newcomer would still want, left for a later update: a flow for creating and editing
-owners and pets, the gateway's 10-second circuit-breaker timeouts, the shared `petclinic` database under the `mysql`
-profile, and how the admin server finds the services.
+The update added flows for creating and editing owners and pets, the gateway's 10-second circuit-breaker limit, the
+shared database settings under the `mysql` profile, and what the code shows about chat memory. The update run first
+cited a line next to a committed password to state the exact database URL; the verifier now refuses that, so the URL
+is left out (see `review/dropped.md`).
 
 Check it yourself:
 

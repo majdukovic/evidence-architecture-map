@@ -88,6 +88,26 @@
         {
           "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java:77",
           "quote": "RouterFunctions.route(htmlNavigation,"
+        },
+        {
+          "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java:88",
+          "quote": "timeoutDuration(Duration.ofSeconds(10))"
+        },
+        {
+          "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/ApiGatewayApplication.java:86",
+          "quote": "factory.configureDefault(id -> new Resilience4JConfigBuilder(id)"
+        },
+        {
+          "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/ApiGatewayController.java:61",
+          "quote": "cb.run(it, throwable -> emptyVisitsForPets())"
+        },
+        {
+          "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/java/org/springframework/samples/petclinic/api/boundary/web/FallbackController.java:15",
+          "quote": "HttpStatus.SC_SERVICE_UNAVAILABLE"
+        },
+        {
+          "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/main/resources/static/scripts/components/ChatBox.js:56",
+          "quote": "content: 'Chat is currently unavailable'"
         }
       ],
       "tests": [
@@ -119,7 +139,8 @@
           "ref": "spring-petclinic-microservices:spring-petclinic-api-gateway/src/test/java/org/springframework/samples/petclinic/api/boundary/web/FallbackControllerTest.java:12",
           "quote": "returnsServiceUnavailableForGetRequests"
         }
-      ]
+      ],
+      "callout": "The gateway's circuit breakers use one default configuration with a <b>10-second</b> time limit, and no other time limit is configured. A slow chat answer from the LLM ends in the <code>/fallback</code> 503 (the chat box then shows its own \"unavailable\" message), and a slow visits call on the owner page quietly returns an empty visits list, with no error shown."
     },
     {
       "id": "customers-service",
@@ -290,8 +311,13 @@
         {
           "ref": "spring-petclinic-microservices-config:customers-service.yml:16",
           "quote": "port: 8081"
+        },
+        {
+          "ref": "spring-petclinic-microservices-config:application.yml:98",
+          "quote": "on-profile: mysql"
         }
-      ]
+      ],
+      "callout": "The <code>mysql</code> profile is defined once, here in the shared <code>application.yml</code>, so every service that takes this file gets the same datasource settings. docker-compose.yml defines no database service."
     },
     {
       "id": "config-server",
@@ -526,7 +552,7 @@
       "layer": "services",
       "repo": "spring-petclinic-microservices",
       "purpose": "Spring AI chat back end. Receives chat text, calls the LLM with tools that can list owners, add owners, add pets (calling customers-service) and list vets (similarity search in an in-memory vector store).",
-      "callout": "Its vet answers come from a vector store preloaded from <code>vectorstore.json</code>, not from a live call to vets-service. It has no automated tests.",
+      "callout": "Its vet answers come from a vector store preloaded from <code>vectorstore.json</code>, not from a live call to vets-service. It has no automated tests. The chat endpoint takes only the message text, and the chat memory advisor is registered once on the shared chat client; nothing in this repository gives the memory a user, session or conversation id.",
       "exposes": [
         "POST /chatclient"
       ],
@@ -549,6 +575,18 @@
         {
           "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/AIBeanConfiguration.java:21",
           "quote": "SimpleVectorStore.builder(embeddingModel).build()"
+        },
+        {
+          "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:58",
+          "quote": "exchange(@RequestBody String query)"
+        },
+        {
+          "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:48",
+          "quote": "MessageChatMemoryAdvisor.builder(chatMemory)"
+        },
+        {
+          "ref": "spring-petclinic-microservices:spring-petclinic-genai-service/src/main/java/org/springframework/samples/petclinic/genai/PetclinicChatClient.java:64",
+          "quote": ".user(query)"
         }
       ]
     },

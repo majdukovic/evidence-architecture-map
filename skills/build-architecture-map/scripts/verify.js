@@ -2,10 +2,11 @@
 /*
  * Checks every evidence reference in a map folder against the code.
  *
- *   node verify.js <map-dir> [--repos <dir>] [--at head|pinned] [--json]
+ *   node verify.js <map-dir> [--repos <dir>] [--at head|pinned] [--exact] [--json]
  *
  * For each { ref: "repo:path:line", quote } it reads the file from the repo's default branch (origin/HEAD) with
- * git, never from the working tree, and checks the quote is on that line or within two lines of it. With
+ * git, never from the working tree, and checks the quote is on that line or within two lines of it (code moves after
+ * a map is pinned). With --exact, used by build.js --pin, the quote must be on the cited line itself. With
  * --at pinned it reads the commit recorded in pins.json instead. It also fails a reference whose nearby lines
  * look like a credential, so the page never links to one.
  *
@@ -20,6 +21,7 @@ const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] :
 const dirArg = args.find((a, i) => !a.startsWith('--') && !['--repos', '--at'].includes(args[i - 1]));
 if (!dirArg) { console.error('Usage: node verify.js <map-dir> [--repos <dir>] [--at head|pinned] [--json]'); process.exit(2); }
 const at = opt('--at', 'head');
+const exact = args.includes('--exact');
 const m = L.loadMap(dirArg);
 const root = L.reposRoot(m, opt('--repos'));
 
@@ -56,10 +58,12 @@ const results = L.collectEvidence(m).map(({ where, ref, quote }) => {
   const q = e.quote || '';
   const near = [];
   for (let d = 0; d <= 2; d++) for (const n of d ? [r.line - d, r.line + d] : [r.line]) if (n >= 1 && n <= lines.length) near.push(n);
-  const window = lines.slice(Math.max(0, r.line - 3), r.line + 2).join('\n');
-  if (L.looksSecret(window)) return { ...e, ok: false, reason: 'the cited lines look like they hold a credential; cite something else' };
+  const around = n => lines.slice(Math.max(0, n - 3), n + 2).join('\n');
   const hit = near.find(n => lines[n - 1].includes(q));
+  // never link to, or quote from, a line next to a credential: check around the cited line and the quoted line
+  if (L.looksSecret(around(r.line)) || (hit && L.looksSecret(around(hit)))) return { ...e, ok: false, reason: 'the cited lines look like they hold a credential; cite something else' };
   if (hit === r.line) return { ...e, ok: true };
+  if (hit && exact) return { ...e, ok: false, reason: `quote is on line ${hit}, not the cited line`, suggest: `${r.repo}:${r.path}:${hit}` };
   if (hit) return { ...e, ok: true, note: `quote is on line ${hit}` };
   const elsewhere = lines.findIndex(x => x.includes(q));
   if (elsewhere >= 0) return { ...e, ok: false, reason: `quote moved to line ${elsewhere + 1}`, suggest: `${r.repo}:${r.path}:${elsewhere + 1}` };

@@ -99,6 +99,40 @@
         ]
       },
       {
+        "text": "A consumer acknowledges every message, including when its handler threw: the exception is logged and the message is removed from the queue. A code comment says a real app should use a dead-letter exchange. A failed handler therefore loses that event.",
+        "evidence": [
+          {
+            "ref": "eShop:src/EventBusRabbitMQ/RabbitMQEventBus.cs:172",
+            "quote": "logger.LogWarning(ex, \"Error Processing message"
+          },
+          {
+            "ref": "eShop:src/EventBusRabbitMQ/RabbitMQEventBus.cs:177",
+            "quote": "// Even on exception we take the message off the queue."
+          },
+          {
+            "ref": "eShop:src/EventBusRabbitMQ/RabbitMQEventBus.cs:180",
+            "quote": "await _consumerChannel.BasicAckAsync(eventArgs.DeliveryTag"
+          }
+        ]
+      },
+      {
+        "text": "If publishing an outbox event fails, Ordering and Catalog mark it as <code>PublishedFailed</code> and carry on. The only read of pending events takes entries still <code>NotPublished</code> for the current transaction, so a failed event is not published again by this code.",
+        "evidence": [
+          {
+            "ref": "eShop:src/Ordering.API/Application/IntegrationEvents/OrderingIntegrationEventService.cs:31",
+            "quote": "await _eventLogService.MarkEventAsFailedAsync(logEvt.EventId);"
+          },
+          {
+            "ref": "eShop:src/Catalog.API/IntegrationEvents/CatalogIntegrationEventService.cs:24",
+            "quote": "await integrationEventLogService.MarkEventAsFailedAsync(evt.Id);"
+          },
+          {
+            "ref": "eShop:src/IntegrationEventLogEF/Services/IntegrationEventLogService.cs:22",
+            "quote": "e.TransactionId == transactionId && e.State == EventStateEnum.NotPublished"
+          }
+        ]
+      },
+      {
         "text": "Ordering and Catalog save the event to an integration-event log in the same database transaction as the data change, then publish it (a transactional outbox).",
         "evidence": [
           {

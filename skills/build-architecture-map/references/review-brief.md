@@ -10,7 +10,7 @@ claims that are wrong, overstated or badly evidenced**. Assume nothing is right 
 
 Repos are cloned under <reposDir>. Read code only from each repo's default branch with git
 (`git -C <repo> show origin/HEAD:<path>`, `git -C <repo> grep -n -E '<p>' origin/HEAD -- <glob>`), never the working tree, and
-change nothing.
+change nothing. If `git show` is refused, `git -C <repo> grep -n '' origin/HEAD -- <path>` prints the file with line numbers.
 
 For every component, connection, flow step and fact, open each cited line (with a few lines around it) and decide:
 

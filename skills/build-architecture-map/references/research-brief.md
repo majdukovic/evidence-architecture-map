@@ -34,7 +34,7 @@ Write JSON fragments in the formats of `<skill-dir>/references/data-format.md`:
    10 fields, `requestSchema` / `responseSchema` pointing at the definition.
 4. **Facts** about how the slice is built, configured and shipped, if clearly shown in code.
 
-Every evidence item is `{ "ref": "repo:path:line", "quote": "<exact substring of that line, 10 to 60 chars (the build accepts 6 to 120)>" }`.
+Every evidence item is `{ "ref": "repo:path:line", "quote": "<exact substring of that line, 10 to 60 chars (the build accepts 4 to 120)>" }`.
 Copy the quote from the line as printed by `node <skill-dir>/scripts/show.js <repo-dir> <path> <from> <to>` (numbered
 lines from `origin/HEAD`), never from memory. Write your result to a fragment file (`{ "components": [...],
 "connections": [...], "flows": [...], "facts": [...] }`) so the coordinator can merge it with `merge.js`.

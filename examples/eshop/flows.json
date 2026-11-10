@@ -441,15 +441,19 @@
         "from": "webapp",
         "to": "basket-api",
         "kind": "req",
-        "label": "Delete the basket after the order call returns",
+        "label": "Delete the basket (even if the order call failed)",
         "protocol": "gRPC",
         "call": {
           "verb": "rpc",
           "target": "Basket/DeleteBasket"
         },
         "request": {},
-        "description": "Ordering commits and publishes its events inside the same request, so the OrderStarted message below can be sent before this call is made; the diagram lists the WebApp call first.",
+        "description": "WebApp does not look at the order call's response before this call: <code>SendAsync</code> does not throw on an error status, so a rejected order still empties the basket. Ordering commits and publishes its events inside the same request, so the OrderStarted message below can be sent before this call is made; the diagram lists the WebApp call first.",
         "evidence": [
+          {
+            "ref": "eShop:src/WebApp/Services/OrderingService.cs:17",
+            "quote": "return httpClient.SendAsync(requestMessage);"
+          },
           {
             "ref": "eShop:src/WebApp/Services/BasketState.cs:108",
             "quote": "await DeleteBasketAsync();"

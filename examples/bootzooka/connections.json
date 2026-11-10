@@ -1,0 +1,268 @@
+[
+  {
+    "from": "ui",
+    "to": "http-api",
+    "protocol": "HTTP",
+    "what": "JSON calls to /api/v1; the base URL is a build-time variable (VITE_APP_BASE_URL), and the packaged build that the backend serves is built with the docker mode",
+    "evidence": [
+      {
+        "ref": "bootzooka:ui/src/api/apiFetcher.ts:80",
+        "quote": "`${baseUrl}${resolveUrl(url, queryParams, pathParams)}`"
+      },
+      {
+        "ref": "bootzooka:ui/vite.config.ts:11",
+        "quote": "JSON.stringify(env.VITE_APP_BASE_URL)"
+      },
+      {
+        "ref": "bootzooka:build.sbt:129",
+        "quote": "yarn \" + taskName + \" --mode docker"
+      }
+    ]
+  },
+  {
+    "from": "http-api",
+    "to": "user",
+    "protocol": "in-process",
+    "what": "Serves the user endpoints",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:36",
+        "quote": "def endpoints = List(userApi, passwordResetApi, versionApi)"
+      },
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:60",
+        "quote": "new HttpApi(apis.endpoints"
+      }
+    ]
+  },
+  {
+    "from": "http-api",
+    "to": "password-reset",
+    "protocol": "in-process",
+    "what": "Serves the password reset endpoints",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:36",
+        "quote": "def endpoints = List(userApi, passwordResetApi, versionApi)"
+      }
+    ]
+  },
+  {
+    "from": "user",
+    "to": "security",
+    "protocol": "in-process",
+    "what": "Authenticates the bearer token of protected endpoints and issues API keys on login and registration",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:35",
+        "quote": "e.handleSecurity(authData => auth(authData))"
+      },
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala:65",
+        "quote": "apiKeyService.create(user.id,"
+      }
+    ]
+  },
+  {
+    "from": "user",
+    "to": "email-service",
+    "protocol": "in-process",
+    "what": "Schedules the registration, profile change and password change notification e-mails",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserService.scala:48",
+        "quote": "emailScheduler.schedule(EmailData(emailClean, confirmationEmail))"
+      },
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala:21",
+        "quote": ") extends EmailScheduler"
+      }
+    ]
+  },
+  {
+    "from": "password-reset",
+    "to": "email-service",
+    "protocol": "in-process",
+    "what": "Schedules the e-mail that carries the reset link",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetService.scala:43",
+        "quote": "emailScheduler.schedule(EmailData(user.emailLowerCase"
+      }
+    ]
+  },
+  {
+    "from": "password-reset",
+    "to": "security",
+    "protocol": "in-process",
+    "what": "Validates the reset code and consumes it",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetService.scala:50",
+        "quote": "auth(code.asId[PasswordResetCode]).ok()"
+      },
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetCodeModel.scala:29",
+        "quote": "override def deleteWhenValid: Boolean = true"
+      }
+    ]
+  },
+  {
+    "from": "email-service",
+    "to": "email-sender",
+    "protocol": "in-process",
+    "what": "Hands each batched e-mail to the configured sender",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala:32",
+        "quote": "emails.map(_.data).foreach(emailSender.apply)"
+      }
+    ]
+  },
+  {
+    "from": "email-sender",
+    "to": "mailgun",
+    "protocol": "HTTPS",
+    "what": "POSTs the e-mail to the configured Mailgun URL",
+    "condition": "Only when email.mailgun.enabled is true",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/MailgunEmailSender.scala:15",
+        "quote": ".post(uri\"${config.url}\")"
+      },
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/EmailSender.scala:10",
+        "quote": "if config.mailgun.enabled then"
+      }
+    ]
+  },
+  {
+    "from": "email-sender",
+    "to": "smtp-server",
+    "protocol": "SMTP",
+    "what": "Sends the e-mail through a JavaMail SMTP(S) transport",
+    "condition": "Only when email.smtp.enabled is true and Mailgun is not enabled",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/SmtpEmailSender.scala:99",
+        "quote": "transport.sendMessage(m, m.getAllRecipients)"
+      },
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/sender/EmailSender.scala:12",
+        "quote": "else if config.smtp.enabled then"
+      }
+    ]
+  },
+  {
+    "from": "user",
+    "to": "db",
+    "protocol": "in-process",
+    "what": "Runs each request handler's data access in a DB transaction",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/user/UserApi.scala:24",
+        "quote": "db.transactEither(userService.registerNewUser"
+      }
+    ]
+  },
+  {
+    "from": "security",
+    "to": "db",
+    "protocol": "in-process",
+    "what": "Looks up and deletes tokens (API keys, reset codes)",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/security/Auth.scala:25",
+        "quote": "db.transact(authTokenOps.findById(id))"
+      }
+    ]
+  },
+  {
+    "from": "password-reset",
+    "to": "db",
+    "protocol": "in-process",
+    "what": "Stores reset codes and updates the password in transactions",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/passwordreset/PasswordResetApi.scala:19",
+        "quote": "db.transact(passwordResetService.forgotPassword("
+      }
+    ]
+  },
+  {
+    "from": "email-service",
+    "to": "db",
+    "protocol": "in-process",
+    "what": "Reads, counts and deletes outbox rows",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/email/EmailService.scala:30",
+        "quote": "db.transact(emailModel.find(config.batchSize))"
+      }
+    ]
+  },
+  {
+    "from": "db",
+    "to": "postgres",
+    "protocol": "JDBC",
+    "what": "Pooled PostgreSQL connections; Flyway migrations over the same URL",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/infrastructure/DB.scala:43",
+        "quote": "hikariConfig.setJdbcUrl(config.url)"
+      },
+      {
+        "ref": "bootzooka:backend/src/main/resources/application.conf:24",
+        "quote": "jdbc:postgresql://"
+      }
+    ]
+  },
+  {
+    "from": "main",
+    "to": "config",
+    "protocol": "in-process",
+    "what": "Reads and logs the configuration first",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:39",
+        "quote": "Config.read.tap(Config.log)"
+      }
+    ]
+  },
+  {
+    "from": "main",
+    "to": "db",
+    "protocol": "in-process",
+    "what": "Creates the pool and runs migrations before anything else is served",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Dependencies.scala:44",
+        "quote": "DB.createTestMigrate(config.db)"
+      }
+    ]
+  },
+  {
+    "from": "main",
+    "to": "email-service",
+    "protocol": "in-process",
+    "what": "Starts the background send and queue-size loops",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Main.scala:26",
+        "quote": "deps.emailService.startProcesses()"
+      }
+    ]
+  },
+  {
+    "from": "main",
+    "to": "http-api",
+    "protocol": "in-process",
+    "what": "Starts the HTTP server",
+    "evidence": [
+      {
+        "ref": "bootzooka:backend/src/main/scala/com/softwaremill/bootzooka/Main.scala:27",
+        "quote": "deps.httpApi.start().discard"
+      }
+    ]
+  }
+]
