@@ -34,7 +34,7 @@ jobs:
       - name: Check every evidence reference
         run: bash tools/evidence-architecture-map/skills/build-architecture-map/scripts/verify-ci.sh "$MAP_DIR"
   ui-audit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # Playwright 1.60 has no browser builds for newer Ubuntu images
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
