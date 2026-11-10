@@ -48,6 +48,9 @@ right is worth more than a complete one that is half wrong.
 /plugin install evidence-architecture-map@evidence-architecture-map
 ```
 
+This repo is its own marketplace. The plugin is not in Anthropic's plugin directory: the directory accepts plugins
+that contain scripts only from Verified organisations, and this one needs its Node scripts to build and check maps.
+
 Then ask, for example: *"Build an architecture map of the repos in ~/code/acme for new backend engineers"*, or run
 `/evidence-architecture-map:build-architecture-map`. To change an existing map, ask to update it, or run
 `/evidence-architecture-map:update-architecture-map`.
